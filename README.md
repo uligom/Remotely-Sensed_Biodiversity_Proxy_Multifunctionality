@@ -10,4 +10,4 @@ To navigate codes, open 'code_overview.Rmd' in RStudio.
 All steps necessary for the analyses are listed and described there.
 
 ## Data
-tbd
+Prior to publication, data available at: https://figshare.com/s/6bc654d4499adfb55d99
