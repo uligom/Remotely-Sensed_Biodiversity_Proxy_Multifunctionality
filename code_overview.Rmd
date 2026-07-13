@@ -21,11 +21,11 @@ source("scripts/extract_site_igbp_coords.R")
 ```{r, echo = F}
 ## Ecosystem Functional Properties (EFPs) ----
 # NB: also extracts mean climatic variables
-source("scripts/calculate_EFPs_CLIM_parallelized_v03.R")
+source("scripts/calculate_EFPs_CLIM_parallelized_v04.R")
 
 
 ## Ecosystem Function Multifunctionality (EMF) ----
-# Figure S6
+# Figure S9
 source("scripts/calculate_multifunctionality.R")
 
 
@@ -38,7 +38,7 @@ source("scripts/export_site_list.R")
 ```{r, echo = F}
 ## MODIS-LAImax ----
 # From Google Earth Engine at:
-# https://code.earthengine.google.com/ba3e8e2ffff69b71b6c7f822e5c5a57e
+# https://code.earthengine.google.com/898a347ef6aa86d61c3f47f746e9d47b
 
 
 ## Vegetation structure (Hc, LAImax) ----
@@ -91,22 +91,25 @@ source("scripts/extract_sites_plot_map.R")
 
 
 ## Multimodel Inference + Relative Importance (supplementary materials) -----
-# Supplementary Figure S1
+# Supplementary Figure S1, Supplementary Figure S6
 run_multimodel_inference(test = "soil")
 plot_mumin_effects(test = "soil")
 
-# Supplementary Figure S2
+# Supplementary Figure S2, Supplementary Figure S7
 run_multimodel_inference(test = "nirv")
 plot_mumin_effects(test = "nirv")
 
-# Supplementary Figure S4, Supplementary Figure S5
+# Supplementary Figure S3, Supplementary Figure S8
 run_multimodel_inference(test = "lai")
 plot_mumin_effects(test = "lai")
 
 
 ## Bivariate relationships (RaoQs vs GPPsat) ----
-# Supplementary Figure S3
-source("scripts/plot_raoq_vs_gppsat.R")
+# Supplementary Figure S4
+source("scripts/plot_raoq_vs_efps.R") # Three Rao Q formulations vs GPPsat
+
+# Supplementary Figure S5
+source("scripts/plot_raoq_distributions.R") # Distribution of the three Rao Q formulations
 ```
 
 

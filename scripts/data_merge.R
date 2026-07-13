@@ -12,6 +12,8 @@
 # v0306, 17.05.2024:  EFP + climate calculation v03. Multifunctionality v00. Eco stability v06 (STD + min_years = 7 - trends).
 # v0307, 29.05.2024:  EFP + climate calculation v03. Multifunctionality v00. Eco stability v07 (inverted CV).
 # v0308, 03.06.2024:  EFP + climate calculation v03. Multifunctionality v00. Eco stability v08 (inverted CV + year >= 2016 filter).
+# v0400, 20.03.2026:  EFP + climate calculation v04. Multifunctionality v04. Eco stability v00 (CV).
+
 
 
 ### Script settings ------------------------------------------------------------
@@ -35,12 +37,10 @@ rm(group_year) # clean environment
 efp_in <- as.character(read.table("data/efp_version.txt"))
 emf_in <- as.character(read.table("data/emf_version.txt"))
 # iav_in <- as.character(read.table("data/iav_version.txt"))
-savedata <- as.logical(readline(prompt = "Save the output of the script? T/F:")) # ask if output should be saved
+struct_in <- as.character(read.table("data/struct_version.txt"))
+savedata <- as.logical(readline(prompt = "Save the output of the script? T/F: ")) # ask if output should be saved
 if (savedata) {
-  vers_out <- paste0(
-    efp_in, stringr::str_extract(emf_in, "(?<=[:digit:])[:digit:]{1}")
-    #stringr::str_extract(iav_in, "(?<=[:digit:])[:digit:]{1}")
-    )
+  vers_out <- paste0(efp_in, stringr::str_extract(emf_in, "(?<=[:digit:])[:digit:]{1}"))#, stringr::str_extract(iav_in, "(?<=[:digit:])[:digit:]{1}"))
   cat(paste0(vers_out, "\n"), file = "data/data_version.txt") # save version number for reference in other scripts ("\n" for new line to avoid warning when reading back into R with read.table())
   eval_file <- glue::glue("results/analysis_evaluation/evaluation_data_merging{groupin}_{vers_out}.txt")
   cat(paste0("##### IMPORT AND PREPARE DATA FOR ANALYSIS #####", "\n"), file = eval_file, append = F) # initialize evaluation text
@@ -49,12 +49,17 @@ if (savedata) {
 
 
 ### Utilities ------------------------------------------------------------------
+## Functions
+source("scripts/functions/safe_load_packages.R")
+
 ## Packages
-library(dplyr)  # tidy data manipulation
-options(dplyr.summarise.inform = F) # suppress summary info
-library(readr)  # read csv
-library(stringr)
-library(tidyr)  # tidy data
+required_packages <- c(
+  "dplyr",        # tidy data manipulation
+  "readr",        # read csv files
+  "stringr",      # tidy string manipulation
+  "tidyr"         # clean and reshape tidy data
+  )
+safe_load_packages(required_packages)
 
 
 
@@ -63,11 +68,12 @@ dat_efps <- read_csv(glue::glue("data/inter/data_efps_clim{groupin}_{efp_in}.csv
   left_join(read_csv("data/input/igbp.csv", show_col_types = F), by = "SITE_ID") %>% # IGBP
   left_join(read_csv("data/input/coords.csv", show_col_types = F), by = "SITE_ID") %>% # coordinates
   relocate(c(IGBP, LATITUDE, LONGITUDE), .after = SITE_ID) %>% 
-  left_join(read_csv("data/inter/veg_structure.csv", show_col_types = F), by = c("SITE_ID", "IGBP")) %>% # LAImax and Hc
-  left_join(read_csv("data/inter/raoq/raoQ_S2_L2A_filtered_averaged.csv", show_col_types = F) %>% # Rao Q
-              select(SITE_ID, contains("Rao_Q") & !contains("std")), # keep relevant metrics (exclude std, as well as NDVImax, NIRvmax...)
-            by = "SITE_ID"
-            )
+  left_join(read_csv(glue::glue("data/inter/veg_structure_{struct_in}.csv"), show_col_types = F), by = c("SITE_ID", "IGBP")) %>% # LAImax and Hc
+  left_join(
+    read_csv("data/inter/raoq/raoQ_S2_L2A_filtered_averaged.csv", show_col_types = F) %>% # Rao Q
+      select(SITE_ID, contains("RaoQ")), # keep relevant metrics (e.g., include std, exclude NDVImax, NIRvmax...)
+    by = "SITE_ID"
+    )
 
 
 ## Evaluation ----
@@ -95,9 +101,9 @@ load(file = glue::glue("data/inter/efps_names_{efp_in}.RData")) # efps_names (ne
 dat_emf <- read_csv(glue::glue("data/inter/data_emf_{emf_in}.csv"), show_col_types = F) %>% # EMF estimates
   left_join(read_csv("data/input/igbp.csv", show_col_types = F), by = "SITE_ID") %>% # IGBP
   left_join(read_csv("data/input/coords.csv", show_col_types = F), by = "SITE_ID") %>% # coordinates
-  left_join(read_csv("data/inter/veg_structure.csv", show_col_types = F), by = c("SITE_ID", "IGBP")) %>% # LAImax and Hc
+  left_join(read_csv(glue::glue("data/inter/veg_structure_{struct_in}.csv"), show_col_types = F), by = c("SITE_ID", "IGBP")) %>% # LAImax and Hc
   left_join(read_csv("data/inter/raoq/raoQ_S2_L2A_filtered_averaged.csv", show_col_types = F) %>% # Rao Q
-              select(SITE_ID, contains("Rao_Q") & !contains("std")), # keep relevant metrics (exclude std, as well as NDVImax, NIRvmax...)
+              select(SITE_ID, contains("RaoQ")), # keep relevant metrics (exclude std, as well as NDVImax, NIRvmax...)
             by = "SITE_ID"
   ) %>%
   left_join(read_csv(glue::glue("data/inter/data_efps_clim{groupin}_{efp_in}.csv"), show_col_types = F) %>% # include constant climatic variables
@@ -114,4 +120,32 @@ if (savedata) {
 
 
 
+# ### Stability of EFPs ----------------------------------------------------------
+# load(file = glue::glue("data/inter/clim_names_{efp_in}.RData")) # vector of climatic variables without iav (needed to exclude variables)
+# load(file = glue::glue("data/inter/clim_iav_names_{iav_in}.RData")) # vector of climatic variables with iav (needed to exclude variables)
+# 
+# dat_iav <- read_csv(glue::glue("data/inter/data_efps_clim_stability_{iav_in}.csv"), show_col_types = F) %>% # EFPs + climate
+#   left_join(read_csv("data/input/igbp.csv", show_col_types = F), by = "SITE_ID") %>% # IGBP
+#   left_join(read_csv("data/input/coords.csv", show_col_types = F), by = "SITE_ID") %>% # coordinates
+#   relocate(c(IGBP, LATITUDE, LONGITUDE), .after = SITE_ID) %>% 
+#   left_join(read_csv("data/inter/veg_structure_v01.csv", show_col_types = F), by = c("SITE_ID", "IGBP")) %>% # LAImax and Hc
+#   left_join(read_csv("data/inter/raoq/raoQ_S2_L2A_filtered_averaged.csv", show_col_types = F) %>% # Rao Q
+#               select(SITE_ID, contains("Rao_Q") & !contains("std")), # keep relevant metrics (exclude std, as well as NDVImax, NIRvmax...)
+#             by = "SITE_ID"
+#   ) %>% 
+#   left_join(read_csv(glue::glue("data/inter/data_efps_clim{groupin}_{efp_in}.csv"), show_col_types = F) %>% # include constant climatic variables
+#               select(SITE_ID, all_of(clim_names)) %>% #[!clim_names %in% str_extract(clim_iav_names, "[:alnum:]+(?=_)")])) %>% 
+#               unique(),
+#             by = "SITE_ID"
+#   )
+# 
+# ## Save IAV ----
+# if (savedata) {
+#   write_csv(dat_iav, glue::glue("data/inter/data4analysis_stability_{vers_out}.csv")) # data for stability of EFPs
+# }
+# 
+# 
+
 ### End ------------------------------------------------------------------------
+txt <- glue::glue("End of script.")
+print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}

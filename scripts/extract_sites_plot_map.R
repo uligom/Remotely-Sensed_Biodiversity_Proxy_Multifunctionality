@@ -1,43 +1,54 @@
 #### SELECT SITES
 
-### Author: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
+### Authors: Ulisse Gomarasca
 ### Script settings ------------------------------------------------------------
 # Clear environment
 rm(list = ls(all = TRUE))
 
 # Data settings
 vers_in <- as.character(read.table("data/efp_version.txt"))
-vers_out <- paste0(vers_in)
-savedata <- as.logical(readline(prompt = "Save the output of the script? T/F:")) # ask if output should be saved
+vers_out <- paste0(vers_in, "_sub")
+savedata <- as.logical(readline(prompt = "Save the output of the script? T/F: ")) # ask if output should be saved
 
 
 
 ### Utilities ------------------------------------------------------------------
-library(dplyr)
-library(ggplot2)
-library(ggthemes)
-library(patchwork)    # combine plots
-library(readr)
-library(readxl)
-library(tibble)
-library(tidyr)
-library(sf)
-library(sp)
+## Functions
+source("scripts/functions/safe_load_packages.R")
+source("scripts/functions/do_crossval_relaimpo.R")
+source("scripts/functions/do_multimodel_relaimpo.R")
+source("scripts/functions/min_max_norm.R")
+# source("scripts/functions/plot_scatterplot_models.R")
+
+## Packages
+required_packages <- c(
+  "dplyr",
+  "ggplot2",
+  "ggthemes",
+  "patchwork",    # combine plots
+  "readr",
+  "readxl",
+  "tibble",
+  "tidyr",
+  "sf",
+  "sp"
+)
+safe_load_packages(required_packages)
 
 ## Other (for plotting)
-source("scripts/themes/MyCols.R")
-source("scripts/themes/MyPlotSpecs.R")
-source("scripts/themes/MyThemes.R")
+source("scripts/utils/MyCols.R")
+source("scripts/utils/MyPlotSpecs.R")
+source("scripts/utils/MyThemes.R")
 
 
 
 ### Data -----------------------------------------------------------------------
 ## Site list
-site_csv <- read_csv("data/inter/site_list_all.csv", show_col_types = F)
+site_csv <- read_csv("data/output/site_list_all.csv", show_col_types = F)
 
 ## site coordinates
-coords <- read_csv("data/input/coords.csv", show_col_types = F)
-# coords_siteyears <- read_csv("data/input/coords_ByYears_v03.csv", show_col_types = F)
+coords <- read_csv("data/coords.csv", show_col_types = F)
+# coords_siteyears <- read_csv("data/coords_ByYears_v03.csv", show_col_types = F)
 
 # coords <- bind_rows(coords, coords_siteyears) %>% unique()
 
@@ -45,7 +56,7 @@ coords <- read_csv("data/input/coords.csv", show_col_types = F)
 
 ### Attach coordinates and IGBP class ------------------------------------------
 site_all <- site_csv %>% 
-  left_join(read_csv("data/input/igbp.csv", show_col_types = F), by = "SITE_ID") %>% 
+  left_join(read_csv("data/igbp.csv", show_col_types = F), by = "SITE_ID") %>% 
   left_join(coords, by = "SITE_ID") %>% 
   rename(longitude = LONGITUDE, latitude = LATITUDE) %>% 
   unique()
@@ -125,7 +136,7 @@ p_map <- countries %>%
   ggplot() +
   geom_map(aes(fill = rowid, map_id = region), map = world_map,
            color = NA, fill = Five_vintage_geo3_light1[3],  # no country for a-political map
-           # color = "white", # map with borders instead of above line
+           # color = "white", # map with borders instead of a-political (line above)
            linewidth = 0.2, show.legend = F
            ) +
   geom_point(
@@ -142,9 +153,12 @@ p_map <- countries %>%
                               override.aes = list(alpha = 1, size = point_size_medium + 1)
                               )
          ) +
-  theme_map() +
+  # theme_map() +
   # theme_transparent +
+  theme_bw() +
   theme(
+    axis.title = element_blank(),
+    axis.text = element_text(size = rel(1.25)),
     legend.position = "bottom",
     legend.justification = "center",
     legend.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"),
@@ -196,9 +210,12 @@ p_eu <- eu_countries %>%
                               override.aes = list(alpha = 1, size = point_size_medium + 1)
                               )
   ) +
-  theme_map() +
+  # theme_map() +
   # theme_transparent +
+  theme_bw() +
   theme(
+    axis.title = element_blank(),
+    axis.text = element_text(size = rel(1.25)),
     legend.position = "none",
     panel.border = element_rect(fill = NA, color = line_color_plot),
     plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt")
@@ -217,7 +234,7 @@ p_out <- p_map +
         show.legend = F, inherit.aes = F
         ) +
       theme_void(),
-    left = 0.47, bottom = 0.725, right = 0.58, top = 0.945, ignore_tag = T
+    left = 0.47, bottom = 0.725, right = 0.58, top = 0.94, ignore_tag = T
   ) +
   inset_element(p_eu, left = -0.2, bottom = 0.05, right = 0.5, top = 0.55, ignore_tag = T) +
   # theme(
@@ -227,15 +244,15 @@ p_out <- p_map +
 p_out
 
 ## Transparent
-p_transparent <- p_out  & theme_transparent & theme(rect = element_rect(color = NA, fill = NA))
+p_transparent <- p_out & theme_transparent & theme(rect = element_rect(color = NA, fill = NA))
 
 
 
 ### Save -----------------------------------------------------------------------
 if (savedata) {
   ## data
-  write_csv(site_all, glue::glue("data/inter/site_list_all_coords_{vers_out}.csv"))
-  sf::st_write(site_shp, glue::glue("data/inter/site_list_all_{vers_out}.shp"), append = F)
+  write_csv(site_all, glue::glue("data/output/site_list_all_coords_{vers_out}.csv"))
+  sf::st_write(site_shp, glue::glue("data/output/site_list_all_{vers_out}.shp"), append = F)
   
   ## map
   ggplot2::ggsave(filename = glue::glue("processed_sites_{vers_out}_no_borders.jpg"), plot = p_map, device = "jpeg",
@@ -251,3 +268,8 @@ if (savedata) {
   #                 bg = "transparent",
   #                 path = "results/maps", width = 508, height = 254, units = "mm", dpi = 150) # 1920 x  1080 px resolution (16:9)
 }
+
+
+
+### End ------------------------------------------------------------------------
+print("End of script.")

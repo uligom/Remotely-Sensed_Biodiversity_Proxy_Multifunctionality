@@ -11,38 +11,43 @@
 rm(list = ls(all = T))
 
 ## Data settings
-savedata <- as.logical(readline(prompt = "Save the output of the script? T/F:")) # ask if output should be saved
+savedata <- as.logical(readline(prompt = "Save the output of the script? T/F: ")) # ask if output should be saved
 efp_in <- as.character(read.table("data/efp_version.txt"))
 if (savedata) {
-  vers_out <- "v00"
+  vers_out <- efp_in
   cat(paste0(vers_out, "\n"), file = "data/emf_version.txt")
 }
 
 
 
 ### Utilities ------------------------------------------------------------------
-library(readr)      # read data
-# library(multifunc)  # multifunctionality
-library(ggplot2)    # plotting
-library(ggradar)
-library(dendextend)
-library(patchwork)  # combine plots
-library(factoextra)
-library(gridExtra)
-library(tidyr)      # data manipulation
-library(dplyr)
-library(purrr)
-# library(forcats)
-library(glue)
-# library(car)        # analysis
-
 ## Functions
+source("scripts/functions/safe_load_packages.R")
 source("scripts/functions/min_max_norm.R")
+source("scripts/functions/my_hcut.R")
+source("scripts/functions/rm_plot_titles.R")
+
+## Packages
+required_packages <- c(
+  "dplyr",        # tidy data manipulation
+  "dendextend",   # cluster analyses
+  "factoextra",   # plot multivariate analyses
+  "ggplot2",      # tidy plots
+  "glue",         # glue strings
+  # "ggradar",      # radar plots
+  "gridExtra",    # grid graphics
+  "patchwork",    # combine plots
+  "purrr",        # map functions
+  "readr",        # read csv files
+  "tidyr"         # clean and reshape tidy data
+)
+safe_load_packages(required_packages)
+
 
 ## Other
-source("scripts/themes/MyCols.R")
-source("scripts/themes/MyPlotSpecs.R")
-source("scripts/themes/MyThemes.R")
+source("scripts/utils/MyCols.R")
+source("scripts/utils/MyPlotSpecs.R")
+source("scripts/utils/MyThemes.R")
 
 
 
@@ -54,6 +59,63 @@ load(glue("data/inter/efps_names_{efp_in}.RData")); efps_names <- efps_names[efp
 dat <- read_csv(glue::glue("data/inter/data_efps_clim_{efp_in}.csv"), show_col_types = F) %>% # EFPs + climate
   select(SITE_ID, all_of(efps_names))
 
+## Vector names
+load(file = glue::glue("data/inter/efps_names_{efp_in}.RData")) # efps_names
+
+
+## Correlation matrix ----
+methodo <- "kendall"
+text_color <- "gray25"
+corr_mat <- dat %>%
+  dplyr::select(all_of(efps_names)) %>% # EFPs
+  mutate(across(.cols = where(is.double), .fns = min_max_norm)) %>% # normalize
+  cor(use = "complete.obs", method = methodo)
+
+corr_df <- corr_mat %>% as_tibble() %>% 
+  mutate(
+    across(.cols = everything(), .fns = ~if_else(.x == 1, NA_real_, .x)),
+    rownames = names(.)
+  ) %>% 
+  pivot_longer(cols = !rownames, names_to = "colnames", values_to = "corr")
+
+corr_df %>% filter(corr == max(corr, na.rm = T))
+
+# Plot
+p_corr <- corr_mat %>%
+  ggcorrplot::ggcorrplot(
+    method = "square", show.diag = F,
+    type = "full", colors = RColorBrewer::brewer.pal(5, "RdBu")[c(1, 3, 5)],
+    # p.mat = NULL, sig.level = 0.05, insig = "pch", # for p-values (need to feed matrix of p-values to 'p.mat')
+    lab = T, lab_col = text_color, lab_size = rel(3)
+  ) +
+  # Visuals
+  theme_bw() +
+  theme(
+    axis.text  = element_text(color = text_color, size = rel(1.25)),
+    axis.text.x = element_text(angle = 90, hjust = 0),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+    legend.key.height = unit(1, "null"), # define legend bar height relative to panel height
+    legend.key.width = unit(1, "cm"),
+    legend.text  = element_text(color = text_color, size = rel(1.25)),
+    legend.title = element_blank()
+  ) +
+  # theme( # transparent background
+  #   panel.background  = element_rect(fill = 'transparent'), # transparent panel bg
+  #   plot.background   = element_rect(fill = 'transparent', color = NA), # transparent plot bg
+  #   # panel.grid.major = element_blank(), # remove major gridlines
+  #   panel.grid.minor  = element_blank(), # remove minor gridlines
+  #   legend.background = element_rect(fill = 'transparent'), # transparent legend bg
+  #   legend.box.background = element_rect(colour = 'transparent', fill = 'transparent') # transparent legend panel and legend box
+  # ) +
+  NULL
+p_corr
+
+if (savedata) {
+  ggsave(glue::glue("/EFPs_{methodo}_{vers_out}.jpg"),
+         plot = p_corr, device = "jpeg", path = "results/metrics_corr",
+         width = 8, height = 6, dpi = 300)
+}
 
 
 ### Processing -----------------------------------------------------------------
@@ -70,18 +132,16 @@ dat_norm <- dat %>%
 dat_mat <- dat_norm %>% select(-SITE_ID, -contains("IGBP")) %>% t()
 X <- dist(dat_mat, method = "euclidean")
 
-clust1 <- hclust(X, method = "complete")
-
 
 ## Plot specs ----
-line_width <- line_width_medium
-
+line_width <- 2
 common_theme <- theme_bw() + theme_combine
 
 
 ## Elbow plot to determine number of clusters ----
+# DECREASE in total within sum of squares should be MINIMIZED after best number of clusters (inflection point)
 p_elbow <- fviz_nbclust(
-  dat_mat, FUN = hcut, method = "wss", k.max = 5
+  x = dat_mat, FUNcluster = my_hcut, method = "wss", k.max = nrow(dat_mat)-1 # maximum number of clusters = n – 1
   ) +
   geom_line(aes(group = 1), linewidth = line_width, color = "steelblue") + 
   geom_point(group = 1, size = 5, color = "steelblue") +
@@ -91,24 +151,46 @@ print(p_elbow)
 
 # Save plot
 if (savedata) {
-  ggplot2::ggsave(filename = glue::glue("results/cluster/Inflection_{vers_out}.jpg"), plot = p_elbow, device = "jpeg",
+  ggplot2::ggsave(filename = glue::glue("results/cluster/inflection_{vers_out}.jpg"), plot = p_elbow, device = "jpeg",
+                  width = 400, height = 300, units = "mm", dpi = 300)
+}
+
+
+## Silhouette plot to determine number of clusters ----
+# Average silhouette width should be MAXIMIZED at best number of clusters
+p_sil <- fviz_nbclust(
+  x = dat_mat, FUNcluster = my_hcut, method = "silhouette", k.max = nrow(dat_mat)-1, linecolor = NA
+) +
+  geom_line(aes(group = 1), linewidth = line_width, color = "steelblue", na.rm = T) + 
+  geom_vline(xintercept = NULL, linetype = 2) +
+  geom_point(group = 1, size = 5, color = "steelblue", na.rm = T) +
+  common_theme +
+  theme(title = element_blank())
+print(p_sil)
+
+# Save plot
+if (savedata) {
+  ggplot2::ggsave(filename = glue::glue("results/cluster/silhouette_{vers_out}.jpg"), plot = p_sil, device = "jpeg",
                   width = 400, height = 300, units = "mm", dpi = 300)
 }
 
 
 ## Plot Dendogram ----
-p_dendr <- eclust(dat_mat, FUN = "hclust", k = 4, graph = T, hc_metric = "euclidean", hc_method = "complete") %>% 
+K <- 8; my_palette <- Eight_categorical2
+
+p_dendr <- eclust(dat_mat, FUN = "hclust", k = K, graph = T, hc_metric = "euclidean", hc_method = "complete") %>% 
   fviz_dend(
-    clust1,
-    k_colors = line_color_plot, lwd = line_width, # color and line width of tree lines
-    color_labels_by_k = F, cex = 1, # color and size of labels
-    rect = T, rect_border = Four_colorblind, rect_lty = "solid" # boxes around clusters
+    k_colors = "black", # color of branches
+    #lwd = line_width # line width of branches ==> NOT WORKING AS OF factoextra 2.0.0
+    color_labels_by_k = F, cex = 1.2, # color and size of labels
+    rect = T, rect_border = my_palette, rect_fill = T, rect_lty = "blank" # boxes around clusters
     ) +
   xlab("Ecosystem Functional Properties") +
   common_theme +
   theme(
     # axis.title.x = element_blank(),
     axis.text.x = element_blank(),
+    legend.position = "none",
     panel.grid.major.x = element_blank(),
     panel.grid.minor.x = element_blank(),
     title = element_blank()
@@ -117,34 +199,15 @@ print(p_dendr)
 
 # Save plot
 if (savedata) {
-  ggplot2::ggsave(filename = glue::glue("results/cluster/Dendrogram_{vers_out}.jpg"), plot = p_dendr, device = "jpeg",
+  ggplot2::ggsave(filename = glue::glue("results/cluster/dendrogram_{vers_out}.jpg"), plot = p_dendr, device = "jpeg",
                   width = 400, height = 300, units = "mm", dpi = 300)
 }
 
-# clust2 <- clust1 %>%
-#   as.dendrogram() #%>%
-#   # set("branches_k_color", k = 4) #%>%
-#   # set("branches_lwd", c(1.5, 1, 1.5)) #%>%
-#   # set("branches_lty", c(1, 1, 3, 1, 1, 2)) #%>%
-#   # set("labels_colors") %>%
-#   # set("labels_cex", c(.9, 1.2))
-# 
-# ggplot(clust2) +
-#   # theme_bw() +
-#   theme_less_facets +
-#   theme(
-#     # plot.margin = unit(c(1, 1, 1, 1), "cm")
-#     panel.spacing = unit(c(1, 1, 1, 1), "cm")
-#   )
-# 
-# 
-# pdf("results/cluster/dendogram.pdf", width = 4, height = 3, paper = 'special')
-# plot(clust1, cex = 0.6, hang = -1, xlab = "", sub = "")
-# rect.hclust(clust1, k = 4, border = Four_colorblind)
-# dev.off()
 
 ## Combine plots ----
-p_hca <- (p_dendr | p_elbow) +
+p_elbow <- rm_xaxis_title(p_elbow) # remove x-axis title
+
+p_hca <- (p_dendr | (p_elbow / p_sil)) +
   plot_annotation(tag_levels = "a") &
   theme(plot.tag = element_text(size = text_size_big))
 print(p_hca)
@@ -160,11 +223,13 @@ if (savedata) {
 
 
 ## Reduce dimensions (average clustered functions) (MANUAL) ----
-efps_sub <- c("Cfuns", "WUEfuns", "CUEeco", "Gsmax")
+# efps_sub <- c("Cfuns", "WUEfuns", "CUEeco", "Gsmax")
+efps_sub <- c("Cfuns", "CUEeco", "EF", "EFampl", "Gsmax", "LUE", "Rfuns", "WUEfuns")
 dat_sub <- dat_norm %>% 
   rowwise() %>% 
   mutate(
     Cfuns = mean(c(GPPsat, NEPmax), na.rm = T),
+    Rfuns = mean(c(Rb, Rbmax), na.rm = T),
     WUEfuns = mean(c(WUE, uWUE), na.rm = T),
     across(.cols = where(is.double), .fns = ~ if_else(is.nan(.x), NA_real_, .x)) # convert NaN into NA
   ) %>%
@@ -204,67 +269,97 @@ dat_emf <- dat_emf %>%
 
 
 
-## Radar chart method ----
-# WARNING: area of radar plot increases quadratically, not linearly (overevaluation of differences).
-# Also, radar plots are often criticized as the circular layout is harder to read 
-# and choice of ordering might lead to misleading interpretation.
+# ## Radar chart method (NOT IMPLEMENTED) ----
+# # WARNING: area of radar plot increases quadratically, not linearly (overevaluation of differences).
+# # Also, radar plots are often criticized as the circular layout is harder to read 
+# # and choice of ordering might lead to misleading interpretation.
+# 
+# # IDEA: mutlidimensional area inscribed within vertices of all PCA vectors, divided by number of dimensions considered (PCs).
+#
+# ## PCA
+# dat_pca <- dat_sub %>% left_join(readr::read_csv("data/input/igbp.csv", show_col_types = F), by = "SITE_ID") %>% dplyr::filter(IGBP != "CVM") %>% drop_na()
+# 
+# ## Run PCA without multiple imputation
+# pca_result <- FactoMineR::PCA(dat_pca %>% dplyr::select(-SITE_ID, -IGBP), scale.unit = T, ncp = 10, graph = F)
+# pca1 <- ade4::dudi.pca(dat_pca %>% dplyr::select(-SITE_ID, -IGBP), center = TRUE, scale = TRUE, scannf = FALSE, nf = 10)
+# 
+# 
+# ## Plot
+# plot_elements_dark <- "gray25"
+# normal_text <- 3; title_text <- 1.2; subtitle_text <- 1.1; # relative size to parent
+# fviz_pca_biplot(pca_result,
+#                 axes = c(1, 2),
+#                 col.ind = dat_pca$IGBP, #"grey50",
+#                 # col.ind = NA, #plot_elements_light, #"white",
+#                 geom.ind = "point",
+#                 palette = CatCol_igbp,#'futurama',
+#                 label = "var",
+#                 col.var = plot_elements_dark,
+#                 labelsize = 2,
+#                 repel = TRUE,
+#                 pointshape = 16,
+#                 pointsize = 2,
+#                 alpha.ind = 0.67,
+#                 arrowsize = 0.5) +
+#   labs(title = "",
+#        x = "PC1",
+#        y = "PC2",
+#        fill = "IGBP") +
+#   guides(fill = guide_legend(title = "")) +
+#   # theme(title = element_blank(),
+#   #       text = element_text(size = rel(normal_text)),
+#   #       axis.line = element_blank(),
+#   #       axis.ticks = element_blank(),
+#   #       axis.title = element_text(size = rel(title_text), face = "bold"),
+#   #       # axis.text = element_text(size = rel(normal_text)),
+#   #       # plot.margin = unit(c(0, 0, 0, 0), "cm"),
+#   #       # legend.position = "none"
+#   #       # legend.text = element_text(size = rel(subtitle_text)),
+#   #       legend.key.height = unit(5, "mm"),
+#   #       legend.key.width = unit(2, "mm")
+#   # ) +
+#   NULL
+# 
+# pca_load <- pca_result$var$coord %>% # add loadings
+#   as_tibble(rownames = "var") %>%
+#   pivot_longer(cols = !var, names_to = "PC", values_to = "loading") %>% 
+#   mutate(PC = paste0("PC", stringr::str_sub(PC, start = 5)))
+# 
+# library(ggradar)
+# dat_emf %>% 
+#   dplyr::slice_sample(n = 20) %>%
+#   select(SITE_ID, all_of(efps_sub)) %>% 
+#   drop_na() %>% 
+#   ggradar()
+# 
+# 
+#
+### Plot -----------------------------------------------------------------------
+p_emf <- dat_emf %>%
+  pivot_longer(cols = contains("EMF"), names_to = "VARIABLENAME", values_to = "DATAVALUE") %>%
+  ggplot() +
+  geom_point(aes(SITE_ID, DATAVALUE), alpha = 0.8, color = "#808080", size = 3) +
+  facet_wrap(. ~ VARIABLENAME, scales = "free_y") +
+  labs(caption = paste("n =", nrow(dat_emf))) +
+  theme_classic() +
+  theme(axis.title = element_text(size = 24),
+        axis.text = element_text(size = 16),
+        axis.text.x = element_text(angle = 270), # rotate x axis text
+        panel.grid.major = element_line(),
+        plot.caption = element_text(size = 24),  # caption text
+        plot.margin = margin(10, 10, 10, 10, unit = "mm"), # margins around plot
+        strip.text = element_text(size = 20),    # subplots title text
+        strip.background = element_blank()       # subplots title with no border
+  )
+print(p_emf)
 
-# IDEA: mutlidimensional area inscribed within vertices of all PCA vectors, divided by number of dimensions considered (PCs).
-## PCA ----
-dat_pca <- dat_norm %>% left_join(readr::read_csv("data/input/igbp.csv", show_col_types = F), by = "SITE_ID") %>% dplyr::filter(IGBP != "CVM") %>% drop_na()
 
-## Run PCA without multiple imputation
-pca_result <- FactoMineR::PCA(dat_pca %>% dplyr::select(-SITE_ID, -IGBP), scale.unit = T, ncp = 10, graph = F)
-pca1 <- ade4::dudi.pca(dat_pca %>% dplyr::select(-SITE_ID, -IGBP), center = TRUE, scale = TRUE, scannf = FALSE, nf = 10)
-
-
-## Plot ----
-plot_elements_dark <- "gray25"
-title_text <- 7; subtitle_text <- 6; normal_text <- 6
-fviz_pca_biplot(pca_result,
-                axes = c(1, 2),
-                col.ind = dat_pca$IGBP, #"grey50",
-                # col.ind = NA, #plot_elements_light, #"white",
-                geom.ind = "point",
-                palette = CatCol_igbp,#'futurama',
-                label = "var",
-                col.var = plot_elements_dark,
-                labelsize = 2,
-                repel = TRUE,
-                pointshape = 16,
-                pointsize = 2,
-                alpha.ind = 0.67,
-                arrowsize = 0.5) +
-  labs(title = "",
-       x = "PC1",
-       y = "PC2",
-       fill = "IGBP") +
-  guides(fill = guide_legend(title = "")) +
-  theme(title = element_blank(),
-        text = element_text(size = normal_text),
-        axis.line = element_blank(),
-        axis.ticks = element_blank(),
-        axis.title = element_text(size = title_text, face = "bold"),
-        axis.text = element_text(size = normal_text),
-        # plot.margin = unit(c(0, 0, 0, 0), "cm"),
-        # legend.position = "none"
-        legend.text = element_text(size = subtitle_text),
-        legend.key.height = unit(5, "mm"),
-        legend.key.width = unit(2, "mm")
-  ) +
-  NULL
-
-pca_load <- pca_result$var$coord %>% # add loadings
-  as_tibble(rownames = "var") %>%
-  pivot_longer(cols = !var, names_to = "PC", values_to = "loading") %>% 
-  mutate(PC = paste0("PC", stringr::str_sub(PC, start = 5)))
-
-dat_emf %>% 
-  dplyr::slice_sample(n = 3) %>% 
-  select(SITE_ID, all_of(efps_sub)) %>% 
-  drop_na() %>% 
-  ggradar(#values.radar = c(0, 0.5, 1),
-          )
+## Save plot
+if (savedata) {
+  ggsave(filename = glue::glue("EMFs_{vers_out}.jpg"),
+         plot = p_emf, device = "jpeg", path = "results/scatterplots",
+         width = 508, height = 285.75, units = "mm", dpi = 300) # 1920 x  1080 px resolution (16:9)
+}
 
 
 
@@ -287,3 +382,4 @@ if (savedata) {
 
 
 ### End ------------------------------------------------------------------------
+print("End of script.")

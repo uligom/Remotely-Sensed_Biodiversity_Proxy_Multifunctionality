@@ -1,14 +1,18 @@
 ### Function -------------------------------------------------------------------
-calc_Gsmax <- function(data, site, year,
-                       SWfilt = 200, USfilt = 0.2
+calc_Gsmax <- function(
+    data, site, year,
+    SWfilt = 200, USfilt = 0.2,
+    plotting = plotting_efps
 )
 {
   
   
   ## Utilities ----
-  require(bigleaf)
-  require(dplyr)
-  require(tidyr)
+  source("scripts/functions/plot_timeseries.R")
+  source("scripts/functions/safe_load_packages.R")
+  
+  required_packages <- c("bigleaf", "dplyr", "tidyr")
+  safe_load_packages(required_packages)
   
   
   ## Quote & settings ----
@@ -51,9 +55,8 @@ calc_Gsmax <- function(data, site, year,
     
     
   } else if (nrow(data_subset) != 0) { # if dataframe is not empty
-    
-    
-    output <- data_subset %>%
+    ## Calculate
+    data_subset <- data_subset %>%
       ## Calculate aerodynamic conductance
       mutate(Ga = aerodynamic.conductance(., Tair = TA, pressure = PA,
                                           wind = WS, ustar = USTAR, H = H, 
@@ -67,10 +70,24 @@ calc_Gsmax <- function(data, site, year,
       unnest(Gs) %>%
       ## Other filters
       tidyr::drop_na(Gs_mol) %>%
-      dplyr::filter(VPD_kPa > 0) %>%  # VPD filter
-      ## Calculate Gsmax (by years if specified) (?)
-      summarise(Gsmax = quantile(na.omit(Gs_ms), 0.90), # 90th Gsmax quantile
-                .groups = "drop") %>% 
+      dplyr::filter(VPD_kPa > 0) # VPD filter
+    
+    
+    ## Plot variable timeseries
+    if (plotting & site %in% rand_sites) {
+      if (savedata) {savepath <- "results/timeseries/efps"} else {savepath <- NA}
+      
+      # Plot
+      data_subset %>% plot_timeseries(y = "Gs_ms", site = site, savepath = savepath)
+    }
+    
+    
+    ## Calculate Gsmax (by years if specified) (?)
+    output <- data_subset %>%
+      summarise(
+        Gsmax = quantile(na.omit(Gs_ms), 0.90), # 90th Gsmax quantile
+        .groups = "drop"
+        ) %>% 
       pull()
   } # end condition of empty data
   

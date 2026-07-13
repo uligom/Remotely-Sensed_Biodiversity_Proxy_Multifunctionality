@@ -15,11 +15,8 @@
 ### Function -------------------------------------------------------------------
 dredged_relaimpo <- function(data, y = "GPPsat", models) {
   ## Utilities ----
-  require(dplyr)
-  require(relaimpo)
-  require(strex)
-  require(stringr)
-  require(tidyr)
+  required_packages <- c("dplyr", "relaimpo", "strex", "stringr", "tidyr")
+  safe_load_packages(required_packages)
   
   
   ## Inputs ----
@@ -137,5 +134,5 @@ dredged_relaimpo <- function(data, y = "GPPsat", models) {
   
   return(weighted_relimp)
 }
-### Debug ----------------------------------------------------------------------
+# ### Debug ----------------------------------------------------------------------
 # debugonce(dredged_relaimpo)

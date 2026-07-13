@@ -1,16 +1,17 @@
 ### Function -------------------------------------------------------------------
-calc_CUEeco <- function(data, site, year,
-                        qile = 0.5,
-                        SWfilt = 50
+calc_CUEeco <- function(
+    data, site, year,
+    qile = 0.5, SWfilt = 50,
+    plotting = plotting_efps
 )
 {
   
   
   ## Utilities ----
-  require(dplyr)
-  require(purrr)
-  require(quantreg) # quantile regression
-  require(tidyr)
+  source("scripts/functions/safe_load_packages.R")
+  
+  required_packages <- c("dplyr", "purrr", "quantreg", "tidyr")
+  safe_load_packages(required_packages)
   
   
   ## Quote & settings ----
@@ -38,13 +39,13 @@ calc_CUEeco <- function(data, site, year,
   
   
   ## Subset for calculations and omit NAs ----
-  data <- data %>% 
+  data_subset <- data %>% 
     dplyr::select(NEE, GPP) %>% 
     tidyr::drop_na() # important to remove NA for quantile regression
   
   
   ## Calculate EFPs ----
-  if (nrow(data) == 0) { # if no data is available after filtering
+  if (nrow(data_subset) == 0) { # if no data is available after filtering
     stop(glue::glue("The {site_year} was skipped because of empty data."))
     output <- tibble(
       varnames = names_vars,
@@ -53,15 +54,15 @@ calc_CUEeco <- function(data, site, year,
       pivot_wider(names_from = varnames, values_from = values)
     
     
-  } else if (nrow(data) != 0) { # if dataframe is not empty
-    # Calculate NEP
-    data <- data %>% dplyr::mutate(NEP = -NEE)
+  } else if (nrow(data_subset) != 0) { # if dataframe is not empty
+    ## Calculate NEP
+    data_subset <- data_subset %>% dplyr::mutate(NEP = -NEE)
     
-    # Calculate CUEeco based on specified quantiles, and include p-values
-    CUEmodel <- quantreg::rq(data, formula = NEP ~ GPP, tau = qile, method = "fn")
+    ## Calculate CUEeco based on specified quantiles, and include p-values
+    CUEmodel <- quantreg::rq(data_subset, formula = NEP ~ GPP, tau = qile, method = "fn")
     # Explanation: NEP ~ GPP => NEP = b + a * GPP => assuming b ~ 0, a = NEP / GPP
     
-    # Slope coefficients and P-values
+    ## Slope coefficients and P-values
     CUEsummary <- summary(CUEmodel, se = "nid") # summary of model with p-values
     if (length(qile) == 1) {
       CUEval <- CUEmodel$coefficients[2]
@@ -79,13 +80,29 @@ calc_CUEeco <- function(data, site, year,
     # rho <- function(u, tau = qile) u * (tau - (u < 0))
     # R1 <- 1 - fit1$rho / fit0$rho
     
-    
-    # Combine into tibble
+    ## Combine into tibble
     output <- tibble(
       varnames = names_vars,
       values = c(CUEval, CUEpval) # extract slope coefficients and p-values
     ) %>%
       pivot_wider(names_from = varnames, values_from = values)
+    
+    
+    ## Plot variable timeseries
+    if (plotting & site %in% rand_sites) {
+      if (savedata) {savepath <- "results/timeseries/efps"} else {savepath <- NA}
+      
+      # Data
+      dat_plot <- data %>% 
+        select(DATETIME) %>% 
+        mutate(
+          CUEval = CUEval,
+          CUEpval = CUEpval
+        )
+      
+      # Plot
+      dat_plot %>% plot_timeseries(y = "CUEval", site = site, color = "CUEpval", savepath = savepath) # here it will be a horizontal line
+    }
     
     ## Output ----
     return(output)

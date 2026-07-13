@@ -90,5 +90,5 @@ import_IGBP <- function(
 
 
 
-# ### Debugging ------------------------------------------------------------------
-# debugonce(import_IGBP)
+### Debugging ------------------------------------------------------------------
+debugonce(import_IGBP)

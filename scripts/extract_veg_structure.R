@@ -1,41 +1,46 @@
 #### IMPORT ANCILLARY DATA
 # LAI, canopy height...
 
-### Author: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
+### Authors: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
 ### Script settings ------------------------------------------------------------
 # Clear environment
 rm(list = ls(all = TRUE))
 
 
 # Data settings
-vers_in <- as.character(read.table("data/efp_version.txt"))
-savedata <- as.logical(readline(prompt = "Save the output of the script? T/F:")) # ask if output should be saved
-if (savedata) {vers_out <- vers_in}
+savedata <- as.logical(readline(prompt = "Save the output of the script? T/F: ")) # ask if output should be saved
+if (savedata) {
+  vers_out <- "v02"
+  cat(paste0(vers_out, "\n"), file = "data/struct_version.txt") # save version number for reference in other scripts ("\n" for new line to avoid warning when reading back into R with read.table())
+}
 
 
 
 ### Utilities ------------------------------------------------------------------
-## Packages
-library(binaryLogic)# bit binary conversion
-library(dplyr)      # tidy data manipulation
-options(dplyr.summarise.inform = F) # suppress summary info
-library(ggplot2)    # tidy plots
-library(glue)       # glue strings
-library(lubridate)  # dates
-library(ncdf4)      # netcdf files
-library(purrr)      # map functions
-library(readr)      # read csv files
-library(readxl)     # excel files
-library(stringr)    # tidy string manipulation
-library(tidyr)      # clean and reshape tidy data
-
 ## Functions
+source("scripts/functions/safe_load_packages.R")
 source("scripts/functions/plot_scatter_lm.R")
+
+## Packages
+required_packages <- c(
+  "binaryLogic",  # bit binary conversion --> install: devtools::install_github("d4ndo/binaryLogic")
+  "dplyr",        # tidy data manipulation
+  "ggplot2",      # tidy plots
+  "glue",         # glue strings
+  "lubridate",    # dates manipulation
+  "ncdf4",        # netcdf files
+  "purrr",        # map functions
+  "readr",        # read csv files
+  "readxl",       # read excel files
+  "stringr",      # tidy string manipulation
+  "tidyr"         # clean and reshape tidy data
+)
+safe_load_packages(required_packages)
 
 
 
 ### Sites ----------------------------------------------------------------------
-my_sites <- read_csv("data/inter/site_list_all.csv", show_col_types = F) %>% pull(SITE_ID) # available sites with EFPs
+my_sites <- read_csv("data/output/site_list_all.csv", show_col_types = F) %>% pull(SITE_ID) # available sites with EFPs
 
 
 
@@ -99,14 +104,14 @@ dat_amf <- full_join(
 
 # ## Ameriflux (restricted access) ----
 # # NB: Only 4 additional sites compared to CC 4.0 subset, and they are already included in FLUXNET BADM or Gomarasca et al., 2023
-# file_list <- list.files("data/input/Flux_networks/Ameriflux/restricted_access/", pattern = "AMF_")
+# file_list <- list.files("data/Flux_networks/Ameriflux/restricted_access/", pattern = "AMF_")
 # site_list <- str_extract(file_list, "[:upper:]{2}-[:alnum:]{3}")
 # date_list <- str_extract(file_list, "[:digit:]{8}")[site_list %in% my_sites & !(site_list %in% site_list_amf)] # needed to build file path
 # site_list <- site_list[!site_list %in% site_list_amf & site_list %in% my_sites]
 # 
 # dat_amf_legacy <- tibble()
 # for (i in 1:length(site_list)) {
-#   dat_amf_legacy <- bind_rows(dat_amf_legacy, read_xlsx(glue("data/input/Flux_networks/Ameriflux/restricted_access/AMF_{site_list[i]}_BIF_{date_list[i]}.xlsx")))
+#   dat_amf_legacy <- bind_rows(dat_amf_legacy, read_xlsx(glue("data/Flux_networks/Ameriflux/restricted_access/AMF_{site_list[i]}_BIF_{date_list[i]}.xlsx")))
 # }
 # # Tidy
 # dat_amf_legacy <- dat_amf_legacy %>% 
@@ -171,7 +176,7 @@ for (i in 1:length(file_list)) {
     dat_icos,
     read_csv(unzip(glue("//minerva/BGI/people/ugomar/codes/B_EF/data/input/Flux_networks/ICOS/{file_list[i]}"),
                    glue("ICOSETC_{site_list[i]}_ANCILLARY_L2.csv"),
-                   exdir = "/data/input/Flux_networks/ICOS"),
+                   exdir = "/data/ICOS"),
              show_col_types = F
              )
   )
@@ -329,7 +334,9 @@ dat_lit <- bind_rows(
 ### MODIS LAI ------------------------------------------------------------------
 ## Data from Google Earth Engine
 # https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MCD15A3H
-modis_lai <- read_csv("data/input/MODIS_LAI.csv", show_col_types = F) %>% 
+# script to extract MODIS LAI: https://code.earthengine.google.com/898a347ef6aa86d61c3f47f746e9d47b
+# version 2 provides 7 more MODIS LAI site-values that were previously set to NA
+modis_lai <- read_csv(glue("data/input/MODIS_LAI_{vers_out}.csv"), show_col_types = F) %>% 
   dplyr::select(-`system:index`, -.geo) %>% 
   relocate(SITE_ID, date, .before = everything()) %>% 
   arrange(SITE_ID, date) %>% 
@@ -400,17 +407,13 @@ dat <- dat %>%
   ## Remove NAs:
   dplyr::filter(!(is.na(Hc) & is.na(LAImax))) %>%
   rename(SOURCE_LAImax = SOURCE) %>% 
-  arrange(SITE_ID)
-
-dat %>% dplyr::filter(Hc_flag == "assumed")
-write_csv(dat, "data/input/veg_structure_assumedHc.csv") # extract sites with assumed Hc = 0.5
-  
-dat <- dat %>% dplyr::select(-Hc_flag)
+  arrange(SITE_ID) %>% 
+  # dplyr::filter(Hc_flag == "assumed"); write_csv(dat, "data/inter/veg_structure_assumedHc.csv") # extract sites with assumed Hc = 0.5
+  dplyr::select(-Hc_flag)
   # %>% drop_na(LAImax) %>% select(SITE_ID, LAImax, LAImax_modis, SOURCE) # data 4 Reda
 
-
 ## Check sites with assumptions on Hc ----
-load("data/input/species/species_cover_v05.RData")
+load("data/input/species_cover_v05.RData") # species_cover
 
 dat_check <- read_csv("data/input/veg_structure_assumedHc.csv", show_col_types = F) %>%
   left_join(
@@ -432,17 +435,11 @@ dat_diff <- inner_join(
   drop_na()
 
 ## Correlation coefficient
-cor_coeff <- cor(dat_diff$LAImax, dat_diff$LAImax_modis, method = "kendall")
-# Kendall more robust with small sample sizes or outliers
-cor_coeff
+tau <- cor(dat_diff$LAImax, dat_diff$LAImax_modis, method = "kendall")
+# Kendall method is more robust, especially with small sample sizes or outliers (and recommended if the data do not necessarily come from a bivariate normal distribution).
 
-## Save correlation coefficient
-if (savedata) {
-  cat(
-    glue::glue("Kendall’s tau = {round(cor_coeff, digits = 2)} over {nrow(dat_diff)} sites"),
-    file = "results/correlation/LAImax_vs_MODIS-LAImax.txt"
-  )
-}
+txt <- glue("Kendall’s τ = {format(tau, digits = 2)} over {nrow(dat_diff)} sites")
+print(txt); if (savedata) {cat(paste0(txt, "\n"), file = "results/metrics_corr/RaoQ_NIRvMedian_correlation.txt", append = F)}
 
 # p_lai <- dat_diff %>% # plot
 #   ggplot(aes(LAImax, LAImax_modis)) +
@@ -475,8 +472,8 @@ cat(paste0("==> ", length(hc_sites), " sites with canopy height and ", length(la
     paste0("!=> Still missing ", length(miss_hc), " canopy height and ", length(miss_lai), " LAImax site values.\n")
     )
 
-cat("Missing Hc:\n"); miss_hc
-cat("Missing LAImax:\n"); miss_lai
+cat("Missing Hc:\n");     print(miss_hc)
+cat("Missing LAImax:\n"); print(miss_lai)
 # NB: probably good enough to assume Hc ~ 0 for wetlands, < 1 for grasslands etc...
 
 
@@ -488,6 +485,10 @@ struct_names <- dat %>% dplyr::select(-SITE_ID, -IGBP) %>% names() %>% sort()
 
 ### Save -----------------------------------------------------------------------
 if (savedata) {
-  write_csv(dat, "data/inter/veg_structure.csv") # data
+  write_csv(dat, glue::glue("data/inter/veg_structure_{vers_out}.csv")) # data
   save(struct_names, file = glue::glue("data/inter/struct_names_{vers_out}.RData")) # vector of variable names
 }
+
+
+### End ------------------------------------------------------------------------
+print("End of script.")

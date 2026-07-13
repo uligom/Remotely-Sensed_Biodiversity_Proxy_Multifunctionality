@@ -1,33 +1,42 @@
-### Authors: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
 ### Function -------------------------------------------------------------------
 import_data_and_calc_EFPs <- function(
     site_list = list("AR-SLu", "AT-Neu", "AU-Cpr"),
-    path = "//minerva/BGI/scratch/jnelson/4Sinikka/data20240123/", path2 = "//minerva/BGI/work_1/scratch/fluxcom/sitecube_proc/model_files/",
-    future_env = list(savedata, eval_file, grouping_var, rand_sites, QCfilt, GSfilt, Pfilt, Pfilt_time, SWfilt, USfilt, GPPsatfilt, min_years = 5, min_months = 3),
-    plotting = F
+    path_fluxes = "//minerva/BGI/scratch/jnelson/4Sinikka/data20240123/", path_meteo = "//minerva/BGI/work_1/scratch/fluxcom/sitecube_proc/model_files/",
+    future_env = list(savedata, eval_file, grouping_var, rand_sites, QCfilt, GSfilt, Pfilt, Pfilt_time, SWfilt, USfilt, GPPsatfilt, Rfilt, EFfilt, min_years = 5, min_months = 3),
+    plotting_vars = F, plotting_efps = F
 ) {
-  
-  
   ### Utilities ----------------------------------------------------------------
-  ## Packages
-  require(dplyr)
-  require(lubridate)
-  require(ncdf4)
-  require(stringr)
-  require(tidyr)
-  
   ## Functions
-  source("scripts/functions/plot_timeseries.R")
+  source("scripts/functions/calc_CUEeco.R")
+  source("scripts/functions/calc_EF.R")
+  source("scripts/functions/calc_GPPsat_NEPmax.R")
+  source("scripts/functions/calc_Gsmax.R")
+  source("scripts/functions/calc_Rb.R")
+  source("scripts/functions/calc_WUE.R")
+  # source("scripts/functions/calc_WUEt.R")
+  source("scripts/functions/find_mode.R")
+  source("scripts/functions/safe_load_packages.R")
+  
+  ## Packages
+  required_packages <- c(
+    "dplyr",        # tidy data manipulation
+    "lubridate",    # dates manipulation
+    "ncdf4",        # netcdf files
+    "stringr",      # tidy string manipulation
+    "tidyr"         # clean and reshape tidy data
+  )
+  safe_load_packages(required_packages)
   
   
   
   ### Function inputs ----------------------------------------------------------
+  # WARNING: SHOULD MATCH INPUTS EXACTLY OR OVERALL OUTPUT MIGHT FAIL WHEN RUNNING IN PARALLEL!
   site <- unlist(site_list)       # site of interest (parallized, also works for testing)
   
   savedata <- future_env[[1]]     # save or not
   eval_file <- future_env[[2]]    # evaluation file
   grouping_var <- future_env[[3]] # calculate by year or for full site timeseries
-  rand_sites <- future_env[[4]]   # calculate by year or for full site timeseries
+  rand_sites <- future_env[[4]]   # plots for random subset of sites
   
   QCfilt <- future_env[[5]]       # quality filter
   GSfilt <- future_env[[6]]       # growing season
@@ -36,8 +45,10 @@ import_data_and_calc_EFPs <- function(
   SWfilt <- future_env[[9]]       # radiation filter (daytime)
   USfilt <- future_env[[10]]      # u* filter
   GPPsatfilt <- future_env[[11]]  # filter for GPPsat outliers
-  min_years <- future_env[[12]]   # minimum number of years EFP calculations
-  min_months <- future_env[[13]]  # minimum number of months in a site-year (used to calculated min. half-hourly entries)
+  Rfilt <- future_env[[12]]       # filter for respiration outliers
+  EFfilt <- future_env[[13]]      # filter for outliers in EF timeseries
+  min_years <- future_env[[14]]   # minimum number of years EFP calculations
+  min_months <- future_env[[15]]  # minimum number of months in a site-year (used to calculated min. half-hourly entries)
   
   
   
@@ -47,12 +58,21 @@ import_data_and_calc_EFPs <- function(
   
   
   ## Output by errors ----
-  err_output <- tibble(SITE_ID = site,
-                       CUEeco90 = NA_real_, CUEpval90 = NA_real_,
-                       GPPsat = NA_real_,
-                       Gsmax = NA_real_, NEP95 = NA_real_, NEP99 = NA_real_,
-                       uWUE = NA_real_, WUE = NA_real_
-  ) # output when error is encountered
+  # WARNING: SHOULD MATCH OUTPUT  EXACTLY OR OVERALL OUTPUT MIGHT FAIL WHEN RUNNING IN PARALLEL!
+  efps_nofilt <- c("Rb", "Rbmax")
+  efps_qc_gs <- c("GPPsat", "LUE", "NEP95", "NEP99")
+  efps_qc_gs_precip <- c("CUEeco90", "CUEpval90", "Gsmax", "EFampl", "EF", "uWUE", "WUE")
+  
+  err_output <- tibble( # output when error is encountered
+    SITE_ID = site,
+    CUEeco90 = NA_real_, CUEpval90 = NA_real_, Rb = NA_real_, Rbmax = NA_real_, #E0 = NA_real_,
+    GPPsat = NA_real_, LUE = NA_real_, NEP95 = NA_real_, NEP99 = NA_real_,
+    Gsmax = NA_real_,
+    EFampl = NA_real_, EF = NA_real_,
+    uWUE = NA_real_, WUE = NA_real_
+  ) %>% 
+    dplyr::select(SITE_ID, sort(names(.))) # reorder: SITE, (YEAR), then EFPs alphabetically sorted
+  
   if (!rlang::is_empty(as.character(grouping_var))) { # add YEAR column if necessary
     err_output <- bind_cols(err_output, tibble(YEAR = NA_real_)) %>% dplyr::relocate(YEAR, .after = SITE_ID)
   }
@@ -65,7 +85,7 @@ import_data_and_calc_EFPs <- function(
   
   ## Fluxes
   nc_fluxes <- tryCatch({
-    ncdf4::nc_open(filename = glue::glue("{path}{site}.nc")) # fluxes
+    ncdf4::nc_open(filename = glue::glue("{path_fluxes}{site}.nc")) # fluxes
   }, error = function(err) {
     return(NA)
   })
@@ -78,7 +98,7 @@ import_data_and_calc_EFPs <- function(
   }
   
   nc_fluxes2 <- tryCatch({
-    ncdf4::nc_open(filename = glue::glue("{path2}{site}_meteo.nc"))
+    ncdf4::nc_open(filename = glue::glue("{path_meteo}{site}_meteo.nc"))
   }, error = function(err) {
     return(NA)
   })
@@ -92,7 +112,7 @@ import_data_and_calc_EFPs <- function(
   
   # ## Remote sensing
   # nc_rs <- tryCatch({
-  # ncdf4::nc_open(filename = glue::glue("{path2}{site}_rs.nc")) # remote sensing data
+  # ncdf4::nc_open(filename = glue::glue("{path_meteo}{site}_rs.nc")) # remote sensing data
   # }, error = function(err) {
   #   return(NA)
   # })
@@ -260,8 +280,8 @@ import_data_and_calc_EFPs <- function(
   
   
   ### Plot variable timeseries -------------------------------------------------
-  if (plotting & site %in% rand_sites) {
-    if (savedata) {savepath <- "results/timeseries"} else {savepath <- NA}
+  if (plotting_vars & site %in% rand_sites) {
+    if (savedata) {savepath <- "results/timeseries/ec"} else {savepath <- NA}
     
     dat %>% plot_timeseries(y = "ET", color = "LE_QC", site = site, savepath = savepath)
     dat %>% plot_timeseries(y = "GPP", color = "GPP_QC", site = site, savepath = savepath)
@@ -277,7 +297,7 @@ import_data_and_calc_EFPs <- function(
   # QC, precip, GS, SW, U* filters moved separate to computations, but output is the same!
   
   ## Exclude cropland sites ----
-  if (unique(dat$IGBP) %in% c("CRO", "CVM")) {
+  if (find_mode(unique(dat$IGBP)) %in% c("CRO", "CVM")) {
     txt <- glue::glue("....Excluding cropland sites. Site {site} was excluded."); print(txt); txt_vector <- c(txt_vector, txt)
     
     return(err_output)
@@ -297,7 +317,13 @@ import_data_and_calc_EFPs <- function(
   }
   
   
-  ## Quality + Growing Season (GPPsat, NEPmax) ----
+  ## Quality only (Rb) ----
+  # No filtering is done because whole gap-filled timeseries is necessary during partitioning 
+  
+  
+  ## Quality + Growing Season (GPPsat, NEPmax, LUE) ----
+  txt <- "....Filtering data for GPPsat, NEPmax, LUE calculations."; print(txt); txt_vector <- c(txt_vector, txt)
+  
   dat_qc_gs <- bigleaf::filter.data(
     data.frame(dat), quality.control = T, filter.growseas = T, filter.precip = F,
     GPP = "GPP", doy = "DOY", year = "YEAR", tGPP = GSfilt,
@@ -305,7 +331,9 @@ import_data_and_calc_EFPs <- function(
     vars.qc = c("TA", "H", "LE", "NEE"), quality.ext = "_QC", good.quality = QCfilt) # missing "RH" QC filter
 
   
-  ## Quality + Growing Season + Precipitation filter (CUEeco, Gsmax, WUE) ----
+  ## Quality + Growing Season + Precipitation filter (CUEeco, EF, Gsmax, WUE) ----
+  txt <- "....Filtering data for CUEeco, EF, EFampl, Gsmax, WUE, uWUE calculations."; print(txt); txt_vector <- c(txt_vector, txt)
+  
   dat_qc_gs_precip <- bigleaf::filter.data(
     data.frame(dat), quality.control = T, filter.growseas = T, filter.precip = T,
     GPP = "GPP", doy = "DOY", year = "YEAR", tGPP = GSfilt,
@@ -314,6 +342,7 @@ import_data_and_calc_EFPs <- function(
   
   
   ## Drop empty rows ----
+  dat <- dat %>% tidyr::drop_na(SITE_ID)
   dat_qc_gs <- dat_qc_gs %>% tidyr::drop_na(SITE_ID)
   dat_qc_gs_precip <- dat_qc_gs_precip %>% tidyr::drop_na(SITE_ID)
   
@@ -332,16 +361,22 @@ import_data_and_calc_EFPs <- function(
   
   ## Minimum number of years ----
   # if (rlang::is_empty(as.character(grouping_var))) { # uncomment to exclude only for case of full-site calculations
-  if (dat_qc_gs %>% pull(YEAR) %>% unique() %>% length() < min_years) {
-    txt <- glue::glue("....Excluding sites with insufficient years. Skipped GPPsat and NEPmax calculations fo site {site}."); print(txt); txt_vector <- c(txt_vector, txt)
+  if (dat %>% pull(YEAR) %>% unique() %>% length() < min_years) {
+    txt <- glue::glue("....Excluding sites with insufficient years. Skipped Rb (etc.) calculations fo site {site}."); print(txt); txt_vector <- c(txt_vector, txt)
     
-    dat_qc_gs <- tibble() # skip by setting nrow == 0 (condition handled downstream)
+    dat <- tibble() # empty input to avoid further calculations and return NA output
+  }
+  
+  if (dat_qc_gs %>% pull(YEAR) %>% unique() %>% length() < min_years) {
+    txt <- glue::glue("....Excluding sites with insufficient years. Skipped GPPsat, NEPmax (etc.) calculations fo site {site}."); print(txt); txt_vector <- c(txt_vector, txt)
+    
+    dat_qc_gs <- tibble() # empty input to avoid further calculations and return NA output
   }
   
   if (dat_qc_gs_precip %>% pull(YEAR) %>% unique() %>% length() < min_years) {
-    txt <- glue::glue("....Excluding sites with insufficient years. Skipped Cueco, Gsmax, WUE (etc.) calculations fo site {site}."); print(txt); txt_vector <- c(txt_vector, txt)
+    txt <- glue::glue("....Excluding sites with insufficient years. Skipped CUEeco, Gsmax, WUE (etc.) calculations fo site {site}."); print(txt); txt_vector <- c(txt_vector, txt)
     
-    dat_qc_gs_precip <- tibble() # skip by setting nrow == 0 (condition handled downstream)
+    dat_qc_gs_precip <- tibble() # empty input to avoid further calculations and return NA output
   }
   # } # uncomment to exclude only for case of full-site calculations
   
@@ -349,20 +384,54 @@ import_data_and_calc_EFPs <- function(
   ## Calculate ----
   tic(glue::glue("Time to calculate EFPs for site {site}"))
   
-  ## EFPs without precipitation filter ----
-  if (nrow(dat_qc_gs) == 0) {
-    dat_out <- tibble(SITE_ID = site)
+  ## EFPs without any additional filtering ----
+  # NB: whole gap-filled timeseries needed for partitioning! Which is why NO filtering is done in advance!
+  if (nrow(dat) == 0) {
+    dat_out_noFilt <- err_output %>% select(SITE_ID, !!grouping_var, any_of(efps_nofilt)) # set to NA
   } else {
-    dat_out <- tryCatch({dat_qc_gs %>% 
+    dat_out_noFilt <- tryCatch({dat %>% 
         dplyr::group_by(!!grouping_var) %>% # grouping variables for mapping
         tidyr::nest(data4EFPs = -c(SITE_ID, !!grouping_var)) %>%
         dplyr::ungroup() %>%
         dplyr::mutate(
-          ## GPPsat & NEP95
+          ## Rb, Rbmax
+          Rbmetrics = purrr::map(
+            .x = data4EFPs, .f = calc_Rb,
+            site = site, year = as.character(grouping_var),
+            SWfilt = SWfilt, GPPfilt = GPPsatfilt, Rfilt = Rfilt,
+            plotting = plotting_efps
+          )
+        ) %>%
+        tidyr::unnest(cols = c(Rbmetrics)) %>% # extract variables; to keep empty outputs: 'keep_empty = T'
+        dplyr::select(-data4EFPs) # remove input data
+      
+    }, error = function(err) {
+      return(NA)
+    })
+  }
+  if (typeof(dat_out_noFilt) == "logical") { # condition to exit computations for current site
+    txt <- glue::glue("!=> Error in the Rb calculations for site {site}. Setting current EFPs to NA."); warning(txt); txt_vector <- c(txt_vector, txt)
+    if (savedata) {cat(paste0(txt_vector, "\n"), file = eval_file, append = T)} # print to evaluation file
+    
+    dat_out_noFilt <- err_output %>% select(SITE_ID, !!grouping_var, any_of(efps_nofilt)) # set to NA
+  }
+  
+  
+  ## EFPs without precipitation filter ----
+  if (nrow(dat_qc_gs) == 0) {
+    dat_out_noPfilt <- err_output %>% select(SITE_ID, !!grouping_var, any_of(efps_qc_gs)) # set to NA
+  } else {
+    dat_out_noPfilt <- tryCatch({dat_qc_gs %>% 
+        dplyr::group_by(!!grouping_var) %>% # grouping variables for mapping
+        tidyr::nest(data4EFPs = -c(SITE_ID, !!grouping_var)) %>%
+        dplyr::ungroup() %>%
+        dplyr::mutate(
+          ## GPPsat, NEP95 & LUE
           LRCmetrics = purrr::map(
             .x = data4EFPs, .f = calc_GPPsat_NEPmax,
             site = site, year = as.character(grouping_var),
-            SWfilt = SWfilt, GPPsatfilt = GPPsatfilt
+            SWfilt = SWfilt, GPPsatfilt = GPPsatfilt,
+            plotting = plotting_efps
           )
         ) %>%
         tidyr::unnest(cols = c(LRCmetrics)) %>% # extract variables; to keep empty outputs: 'keep_empty = T'
@@ -372,19 +441,18 @@ import_data_and_calc_EFPs <- function(
       return(NA)
     })
   }
-  if (typeof(dat_out) == "logical") { # condition to exit computations for current site
-    txt <- glue::glue("!=> Error in the EFP calculations (GPPsat, or NEPmax) for site {site}. Skipping current site."); warning(txt); txt_vector <- c(txt_vector, txt)
+  if (typeof(dat_out_noPfilt) == "logical") { # condition to exit computations for current site
+    txt <- glue::glue("!=> Error in the LRC calculations (GPPsat, or NEPmax) for site {site}. Setting current EFPs to NA."); warning(txt); txt_vector <- c(txt_vector, txt)
     if (savedata) {cat(paste0(txt_vector, "\n"), file = eval_file, append = T)} # print to evaluation file
     
-    return(err_output)
-    rlang::interrupt()
+    dat_out_noPfilt <- err_output %>% select(SITE_ID, !!grouping_var, any_of(efps_qc_gs)) # set to NA
   }
   
   ## EFPs with all filters ----
   if (nrow(dat_qc_gs_precip) == 0) {
-    dat_out2 <- tibble(SITE_ID = site)
+    dat_out_allFilt <- err_output %>% select(SITE_ID, !!grouping_var, any_of(efps_qc_gs_precip)) # set to NA
   } else {
-    dat_out2 <- tryCatch({dat_qc_gs_precip %>% 
+    dat_out_allFilt <- tryCatch({dat_qc_gs_precip %>% 
         dplyr::group_by(!!grouping_var) %>% # grouping variables for mapping
         tidyr::nest(data4EFPs = -c(SITE_ID, !!grouping_var)) %>%
         dplyr::ungroup() %>%
@@ -394,57 +462,68 @@ import_data_and_calc_EFPs <- function(
             .x = data4EFPs, .f = calc_CUEeco,
             site = site, year = as.character(grouping_var),
             qile = 0.9,
-            SWfilt = SWfilt
+            SWfilt = SWfilt,
+            plotting = plotting_efps
           ),
-          # ## EF
-          # # ......................................................................
+          ## EF
+          EFmetrics = purrr::map(
+            .x = data4EFPs, .f = calc_EF,
+            site = site, year = as.character(grouping_var),
+            SWfilt = SWfilt * 4, USfilt = USfilt, EFfilt = EFfilt,
+            plotting = plotting_efps
+          ),
           ## Gsmax
           Gsmax = purrr::map_dbl(
             .x = data4EFPs, .f = calc_Gsmax,
             site = site, year = as.character(grouping_var),
-            SWfilt = SWfilt * 4, USfilt = USfilt
+            SWfilt = SWfilt * 4, USfilt = USfilt,
+          plotting = plotting_efps
           ),
           ## WUE
           WUEmetrics = purrr::map(
             .x = data4EFPs, .f = calc_WUE,
             site = site, year = as.character(grouping_var),
-            SWfilt = SWfilt * 4
+            SWfilt = SWfilt * 4,
+            plotting = plotting_efps
           )
           # ## WUEt
           # # ......................................................................
         ) %>%
-        tidyr::unnest(cols = c(CUEeco, WUEmetrics)) %>% # extract variables; to keep empty outputs: 'keep_empty = T'
+        tidyr::unnest(cols = c(CUEeco, EFmetrics, WUEmetrics)) %>% # extract variables; to keep empty outputs: 'keep_empty = T'
         dplyr::select(-data4EFPs) # remove input data
       
     }, error = function(err) {
       return(NA)
     })
   }
-  if (typeof(dat_out2) == "logical") { # condition to exit computations for current site
-    txt <- glue::glue("!=> Error in the EFP calculations (CUEeco, Gsmax, or WUE) for site {site}. Skipping current site."); warning(txt); txt_vector <- c(txt_vector, txt)
+  if (typeof(dat_out_allFilt) == "logical") { # condition to exit computations for current site
+    txt <- glue::glue("!=> Error in the Water-related EFPs calculations (CUEeco, Gsmax, or WUE...) for site {site}. Setting current EFPs to NA."); warning(txt); txt_vector <- c(txt_vector, txt)
     if (savedata) {cat(paste0(txt_vector, "\n"), file = eval_file, append = T)} # print to evaluation file
     
-    return(err_output)
-    rlang::interrupt()
+    dat_out_allFilt <- err_output %>% select(SITE_ID, !!grouping_var, any_of(efps_qc_gs_precip)) # set to NA
   }
   
   toc()
   
   
   ## Combine output -----
-  if (length(dat_out) == 1) { # condition to return NA output when all calculations failed due to insufficient site-years
-    txt <- glue::glue("....All calculations failed due to insufficient data. Site {site} was excluded."); print(txt); txt_vector <- c(txt_vector, txt)
+  dat_out <- dat_out_noFilt %>%
+    dplyr::left_join(dat_out_noPfilt, by = c("SITE_ID", as.character(grouping_var))) %>%
+    dplyr::left_join(dat_out_allFilt, by = c("SITE_ID", as.character(grouping_var))) %>%
+    dplyr::select(SITE_ID, !!grouping_var, sort(names(.))) # reorder: SITE, (YEAR), then EFPs alphabetically sorted
+  
+  if (sum(is.na(dat_out)) == length(dat_out) - 1) { # condition to return NA output when all calculations failed due to insufficient site-years
+    txt <- glue::glue("....All calculations failed likely due to insufficient data. Site {site} was excluded."); print(txt); txt_vector <- c(txt_vector, txt)
     
     return(err_output)
     rlang::interrupt()
   }
-  dat_out <- dat_out %>% dplyr::left_join(dat_out2) %>% dplyr::relocate(contains("CUE"), .before = everything())
-  
   
   
   ### Clean memory -------------------------------------------------------------
+  nc_close(nc_fluxes); nc_close(nc_fluxes2) # close netcdf files
   rm(nc_fluxes, nc_fluxes2, timestart_fluxes, timestart_fluxes2,
-     dat, dat_qc_gs, dat_qc_gs_precip)
+     dat, dat_out_noFilt, dat_out_noPfilt, dat_out_allFilt, dat_qc_gs, dat_qc_gs_precip)
   gc() # clean memory usage
   
   
@@ -454,7 +533,7 @@ import_data_and_calc_EFPs <- function(
   print(txt); txt_vector <- c(txt_vector, txt)
   if (savedata) {cat(paste0(txt_vector, "\n"), file = eval_file, append = T)} # print to evaluation file
   
-  ## Function output -----
+  
   return(dat_out)
   
   

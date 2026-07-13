@@ -1,9 +1,12 @@
-#### Function ----------------------------------------------------------------
+#### TEST RELATIONSHIPS BETWEEN EFPS AND BIODIVERSITY
 # Test relationships between ecosystem functions/multifunctionality and biodiversity
 
 ### Authors: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
 
-run_multimodel_inference <- function(test = "main") {
+
+
+#### Function ------------------------------------------------------------------
+run_multimodel_inference <- function(test = "main", vif_threshold = 10) {
   ### Version History ----------------------------------------------------------
   # v00, 06.03.2024:  Same as v11 of BEF analysis.
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
@@ -13,59 +16,60 @@ run_multimodel_inference <- function(test = "main") {
   # v02, 21.05.2024:  Testing NIRv_median together with RaoQ_NIRv.
   # v03, 27.05.2024:  Testing soil variables.
   # v04, 27.05.2024:  Testing only IAV climate variables.
+  # v--, 27.03.2026:  Updates for revision.
+  # v05, 09.04.2026:  Translated version numbers to human-readable identifiers; added VIF for each predicted variable.
+  # v06, 02.06.2026:  Final check after re-running and updating all scripts.
   
-  
-  
-  ### Function input -----------------------------------------------------------
-  if (test == "main") {test_vers <- "v01."}
-  else if (test == "lai") {test_vers <- "v01b."}
-  else if (test == "nirv") {test_vers <- "v02."}
-  else if (test == "soil") {test_vers <- "v03."}
-  # else if (test == "iav") {test_vers <- "v04."}
-  
-  
-  
-  ### Script settings ----------------------------------------------------------
-  library(tictoc)
-  tic("Multimodel Inference script: ") # measure run time
-  
-  ## Data settings
-  savedata <- as.logical(readline(prompt = "Save the output of the script? T/F:")) # ask if output should be saved
-  efp_in <- as.character(read.table("data/efp_version.txt"))
-  emf_in <- as.character(read.table("data/emf_version.txt"))
-  # iav_in <- as.character(read.table("data/iav_version.txt"))
-  dat_in <- as.character(read.table("data/data_version.txt"))
-  vers <- paste0(test_vers, stringr::str_extract(dat_in, "[:digit:]+[:punct:]?[:digit:]*[:punct:]?[:digit:]*"))
-  cat(paste0(vers, "\n"), file = "data/mumin_analysis_version.txt") # save version number for reference in other scripts ("\n" for new line to avoid warning when reading back into R with read.table())
+  script_vers <- "v06"
   
   
   
   ### Utilities ------------------------------------------------------------------
-  ## Packages
-  library(car)          # variable inflation factor (vif)
-  library(dplyr)        # tidy data manipulation
-  options(dplyr.summarise.inform = F) # suppress summary info
-  library(ggplot2)      # tidy plots
-  library(modEvA)       # pseudo-R2 for glm
-  library(MuMIn)        # dredge multimodel inference
-  library(RColorBrewer) # plot color functionalities
-  library(readr)        # read table format files
-  library(relaimpo)     # relative importance analysis
-  library(rlang)        # quoting
-  library(rstatix)      # levene's normality test
-  library(stringr)      # string manipulation
-  library(tictoc)       # measure time
-  library(tidyr)        # clean and reshape tidy data
-  library(tidyselect)   # tidyverse helpers
-  
   ## Functions
+  source("scripts/functions/safe_load_packages.R")
   source("scripts/functions/do_crossval_relaimpo.R")
   source("scripts/functions/do_multimodel_relaimpo.R")
   source("scripts/functions/min_max_norm.R")
   # source("scripts/functions/plot_scatterplot_models.R")
   
+  ## Packages
+  required_packages <- c(
+    "car",            # regression functions
+    "dplyr",        # tidy data manipulation
+    "ggplot2",      # tidy plots
+    "glue",         # glue strings
+    "modEvA",         # model evaluation
+    "MuMIn",          # multimodel inference
+    "RColorBrewer", # plot color functionalities
+    "readr",        # read csv files
+    "relaimpo",     # relative importance
+    "rlang",        # quoting inside functions
+    "rstatix",      # tidy statistics
+    "stringr",      # tidy string manipulation
+    "tictoc",       # measure time
+    "tidyr",        # clean and reshape tidy data
+    "tidyselect"    # tidy selection helpers
+  )
+  safe_load_packages(required_packages)
+  
   ## Other
-  source("scripts/themes/MyThemes.R")
+  source("scripts/utils/MyThemes.R")
+  
+  
+  
+  ### Script settings ----------------------------------------------------------
+  tic("Multimodel Inference script: ") # measure run time
+  
+  ## Data settings
+  savedata <- as.logical(readline(prompt = "Save the output of the script? T/F: ")) # ask if output should be saved
+  efp_in <- as.character(read.table("data/efp_version.txt"))
+  emf_in <- as.character(read.table("data/emf_version.txt"))
+  # iav_in <- as.character(read.table("data/iav_version.txt"))
+  struct_in <- as.character(read.table("data/struct_version.txt"))
+  dat_in <- as.character(read.table("data/data_version.txt"))
+  vers <- paste0(script_vers, ".", stringr::str_extract(dat_in, "[:digit:]+[:punct:]?[:digit:]*[:punct:]?[:digit:]*"))
+  # Save output version
+  cat(paste0(vers, "\n"), file = "data/mumin_analysis_version.txt") # save version number for reference in other scripts ("\n" for new line to avoid warning when reading back into R with read.table())  
   
   
   
@@ -93,22 +97,22 @@ run_multimodel_inference <- function(test = "main") {
     
     
     ### More output settings -----------------------------------------------------
-    vers_out <- glue::glue("{response}_{subx}_{raoq_in}_{vers}")
+    vers_out <- glue("{response}_{subx}_{raoq_in}_{test}_{vers}")
+    # vers_all <- glue("{response}_all_{raoq_in}_{test}_{vers}") # last version for which analysis with all variables was performed (should be same as vers_out when fully updated)
     
-    vers_all <- glue::glue("{response}_all_{raoq_in}_{vers}") # last version for which analysis with all variables was performed (should be same as vers_out when fully updated)
-    
-    eval_file <- glue::glue("results/analysis_evaluation/evaluation_multivariate_analysis_{vers_out}.txt")
-    txt <- "Initializing analysis..."; print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = F)}
+    ## Evaluation
+    eval_file <- glue("results/analysis_evaluation/evaluation_multivariate_analysis_{vers_out}.txt")
+    txt <- glue("Initializing analysis for '{response}' response..."); print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = F)}
     
     
     
     ### Data ---------------------------------------------------------------------
     if (response == "efp") { # analysis on full-timeseries EFPs
-      dat <- read_csv(glue::glue("data/inter/data4analysis_efps_{dat_in}.csv"), show_col_types = F) %>% glimpse()
+      dat <- read_csv(glue("data/inter/data4analysis_efps_{dat_in}.csv"), show_col_types = F) %>% glimpse()
       # } else if (response == "iav") { # analysis on stability of EFPs
-      #   dat <- read_csv(glue::glue("data/inter/data4analysis_stability_{dat_in}.csv"), show_col_types = F) %>% glimpse()
+      #   dat <- read_csv(glue("data/inter/data4analysis_stability_{dat_in}.csv"), show_col_types = F) %>% glimpse()
     } else if (response == "emf") { # analysis on multifunctionality of EFPs
-      dat <- read_csv(glue::glue("data/inter/data4analysis_multifunctionality_{dat_in}.csv"), show_col_types = F) %>% glimpse()
+      dat <- read_csv(glue("data/inter/data4analysis_multifunctionality_{dat_in}.csv"), show_col_types = F) %>% glimpse()
     }
     
     
@@ -116,39 +120,40 @@ run_multimodel_inference <- function(test = "main") {
     ### Vector names -------------------------------------------------------------
     ## Response variable(s)
     if (response == "efp") { # analysis on full-timeseries EFPs
-      load(file = glue::glue("data/inter/efps_names_{efp_in}.RData"))
+      load(file = glue("data/inter/efps_names_{efp_in}.RData"))
       # } else if (response == "iav") { # analysis on stability of EFPs
-      #   load(file = glue::glue("data/inter/efps_iav_names_{iav_in}.RData"))
+      #   load(file = glue("data/inter/efps_iav_names_{iav_in}.RData"))
     } else if (response == "emf") { # analysis on multifunctionality of EFPs
-      load(file = glue::glue("data/inter/emf_names_{emf_in}.RData"))
+      load(file = glue("data/inter/emf_names_{emf_in}.RData"))
     }
     
     ## Climate
     if (response == "efp") { # analysis on full-timeseries EFPs
-      load(file = glue::glue("data/inter/clim_names_{efp_in}.RData"))
+      load(file = glue("data/inter/clim_names_{efp_in}.RData"))
       # } else if (response == "iav") { # analysis on stability of EFPs
-      #   load(file = glue::glue("data/inter/clim_names_{efp_in}.RData")) # mean climate
-      #   load(file = glue::glue("data/clim_iav_names_{iav_in}.RData")) # climate variability
+      #   load(file = glue("data/inter/clim_names_{efp_in}.RData")) # mean climate
+      #   load(file = glue("data/clim_iav_names_{iav_in}.RData")) # climate variability
     } else if (response == "emf") { # analysis on multifunctionality of EFPs
-      load(file = glue::glue("data/inter/clim_names_{efp_in}.RData"))
+      load(file = glue("data/inter/clim_names_{emf_in}.RData"))
     }
     
     ## Structure
-    load(file = glue::glue("data/inter/struct_names_{efp_in}.RData"))
+    load(file = glue("data/inter/struct_names_{struct_in}.RData"))
     
     
     
     ### Process data -----------------------------------------------------------
     ## Pre-selection of EFPs and predictors ----
-    if (raoq_in == "bands") {raoQ_name <- sym("Rao_Q_S2")
-    } else if (raoq_in == "ndvi") {raoQ_name <- sym("Rao_Q_NDVI")
-    } else if (raoq_in == "nirv") {raoQ_name <- sym("Rao_Q_NIRv")
+    if (raoq_in == "bands") {raoQ_name <- sym("RaoQ_S2")
+    } else if (raoq_in == "ndvi") {raoQ_name <- sym("RaoQ_NDVI")
+    } else if (raoq_in == "nirv") {raoQ_name <- sym("RaoQ_NIRv")
     }
     
     dat <- dat %>% 
       dplyr::select(-IGBP, -contains("LONGITUDE"), -contains("LATITUDE"), -contains("SOURCE")) %>% # exclude metadata
       dplyr::select(-contains("99"), -contains("pval")) %>% # exclude unnecessary metrics (e.g. NEP99, CUEpval90)
-      dplyr::select(-contains("Rao_Q"), !!raoQ_name) # satellite Rao's Q: only keep one
+      dplyr::select(-contains("RaoQ"), !!raoQ_name) # satellite Rao's Q: only keep one
+    
     
     ## Test-based selections
     if (test == "lai") {
@@ -202,72 +207,40 @@ run_multimodel_inference <- function(test = "main") {
     
     ## Structure
     struct_names <- struct_names[struct_names %in% names(dat)]
+    if (test == "nirv") {
+      struct_names <- c(struct_names, "NIRv_median")
+    }
     
     
-    
-    ### Multivariate analysis --------------------------------------------------
     ## Normalize data between 0 and 1 ----
     dat_norm <- dat %>% mutate(across(.cols = where(is.double), .fns = min_max_norm))
     
     
-    ## Select predictors ----
-    # Extract variables for the model (select e.g. GPPSAT (for vif testing) and predictors)
-    y_test <- sym(dat_norm %>% select(contains("GPPsat") | contains("EMFavg")) %>% names())
-    df_vifed <- dat_norm %>% 
-      dplyr::select(!c(SITE_ID, !!!syms(y_names)), !!y_test) %>% # here it doesn't matter which variable is being predicted, we are just testing the predictors
-      tidyr::drop_na()
     
+    ## Select predictors (with/without biodiversity) ---------------------------
+    predictors <- c(as.character(raoQ_name), clim_names, struct_names)
     
-    ## Test collinearity (VIF) ----
-    options(na.action = "na.fail") # global options for na.action (needed)
-    
-    txt <- "==> Computing Variance Inflation Factor to select explanatory variables for further analyses."
-    print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
-    
-    df_subvifed <- df_vifed # final VIF on all (but EFPs) variables: align dataframes for VIF processing
-    n_excl <- 1 # initialize
-    var_excl_list <- c()
-    while (n_excl > 0) {
-      ## Generalized Linear Model with all predictors
-      # (cf. normality assumption)
-      formula1 <- as.formula(glue::glue("{y_test} ~ .")) # here it doesn't matter which variable is being predicted, we are just testing the predictors
-      fm1 <- glm(formula1, data = df_subvifed) # generalized linear model
-      
-      ## calculate variable inflation factor
-      vif_excl <- bind_rows(vif(fm1)) %>%
-        pivot_longer(everything(), names_to = "variable", values_to = "inflation_factor") %>% 
-        print(n = Inf)
-      
-      # check how many variables are have vif above threshold
-      n_excl <- vif_excl %>% 
-        dplyr::filter(inflation_factor > 10) %>%
-        nrow()
-      
-      txt <- glue::glue("{n_excl} variables above inflation factor of 10.")
+    if (subx == "no") { # NO BIODIVERSITY ----
+      # Approximate running time: 30 seconds
+      ## Select biodiversity predictors
+      txt <- "...performing analyses EXCLUDING biodiversity predictor(s)."
       print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
       
-      if (n_excl > 0) {
-        ## exclude variables with values over 10
-        var_excl <- vif_excl %>%
-          dplyr::filter(inflation_factor > 10) %>% 
-          dplyr::filter(inflation_factor == max(inflation_factor)) %>% 
-          pull(variable) %>% 
-          rlang::sym()
-        
-        var_excl_list <- c(var_excl_list, as.character(var_excl))
-        
-        txt <- glue::glue("Removing variable with highest vif value ({var_excl}).")
-        print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
-        
-        df_vifed <- df_vifed %>% dplyr::select(-!!var_excl) # remove variable from list of explanatories
-        df_subvifed <- df_subvifed %>% dplyr::select(-!!var_excl) # remove variable from subset
-      }
-    }
+      predictors <- predictors[predictors %in% c(clim_names, struct_names)]
+      
+    } else if (subx == "all") { # ALL BIODIVERSITY ----
+      # Approximate running time: > 1 hour
+      ## Select all biodiversity predictors
+      txt <- "...performing analyses INCLUDING biodiversity predictor(s)."
+      print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
+      
+      # NO FURTHER ACTION NEEDED
+      
+    } else {
+      warning("Unexpected conditions. Check inputs.")
+    } # end conditions
     
-    txt <- glue::glue("Test of variance inflation factor excluded the following variables: {paste(var_excl_list, collapse = ', ')}.")
-    print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
     
-    predictors <- df_vifed %>% select(-!!y_test) %>% names() %>% print()
     
     
     # ## Check assumptions for regression ----
@@ -282,7 +255,7 @@ run_multimodel_inference <- function(test = "main") {
     #   mutate(normality = if_else(p > 0.1, TRUE, FALSE))
     # shapiro_stats
     # 
-    # txt <- glue::glue("{nrow(shapiro_stats) - shapiro_stats %>% pull(normality) %>% sum()} out of {nrow(shapiro_stats)} variables did NOT meet the assumption of normality.")
+    # txt <- glue("{nrow(shapiro_stats) - shapiro_stats %>% pull(normality) %>% sum()} out of {nrow(shapiro_stats)} variables did NOT meet the assumption of normality.")
     # print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
     # 
     # # # Transform data?
@@ -294,76 +267,42 @@ run_multimodel_inference <- function(test = "main") {
     # 
     
     ### Multimodel inference - one variable per group at a time ----------------
-    if (subx == "no") { # NO BIODIVERSITY ----
-      # Approximate running time: 30 seconds
-      ## Select biodiversity predictors
-      predictors_bb <- predictors[predictors %in% c(clim_names, struct_names)]
-      
-      ## Announce analysis
-      txt <- glue::glue("==> Analysis on {subx} biodiversity predictors.")
-      print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
-      
-      ## Do analysis via function
-      relimp_all <- do_multimodel_relaimpo(dat_norm, y_names, predictors_bb, savedata, eval_file, vers_out)
+    ## Do analysis via function
+    relimp_all <- do_multimodel_relaimpo(dat_norm, y_names, predictors, vif_threshold, savedata, eval_file, vers_out)
+    relimp_crossval <- do_crossval_relaimpo(dat_norm, y_names, predictors, savedata, eval_file, vers_out)
+    
+    ## Attach loo RMSE
+    relimp_all <- relimp_all %>% 
+      left_join(relimp_crossval %>% dplyr::select(prediction, RMSE) %>% unique(), by = "prediction", suffix = c("", "_loo")) %>% 
+      relocate(RMSE_loo, .after = RMSE)
+    
+    ## Save ----
+    if (savedata) {
+      # model output and variable importance
+      write_csv(relimp_all, glue("results/multimodel_inference/prediction_and_relaimpo_{vers_out}.csv"))
+    }
+    
+    
+    ## Calculate statistics for manuscript ----
+    if (eee == 1) {
+      ## Average relative importance of Rao Q for all EFPs
+      avg_relaimpo_RaoQ <- relimp_all %>% dplyr::filter(variable == "RaoQ_NIRv") %>% pull(rel_importance) %>% mean(na.rm = T)
+      n_relaimpo_RaoQ <- relimp_all %>% dplyr::filter(variable == "RaoQ_NIRv") %>% pull(rel_importance) %>% length()
       
       ## Save
       if (savedata) {
-        # model output and variable importance
-        write_csv(relimp_all, glue::glue("results/multimodel_inference/prediction_and_relaimpo_{vers_out}.csv"))
+        cat(
+          glue("the average relative importance of Rao Q for all {n_relaimpo_RaoQ} EFPs was {round(avg_relaimpo_RaoQ * 100, digit = 1)} %"),
+          file = glue("results/multimodel_inference/avg_relaimpo_RaoQ_{vers_out}.txt")
+        )
       }
-      
-      
-      
-    } else if (subx == "all") { # ALL BIODIVERSITY ----
-      # Approximate running time: > 1 hour
-      ## Select biodiversity predictors
-      predictors_bb <- predictors
-      
-      ## Announce analysis
-      txt <- glue::glue("==> Analysis on {subx} biodiversity predictors.")
-      print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
-      
-      ## Do analysis via function
-      relimp_all <- do_multimodel_relaimpo(dat_norm, y_names, predictors_bb, savedata, eval_file, vers_out)
-      relimp_crossval <- do_crossval_relaimpo(dat_norm, y_names, predictors_bb, savedata, eval_file, vers_out)
-      
-      ## Attach loo RMSE
-      relimp_all <- relimp_all %>% 
-        left_join(relimp_crossval %>% dplyr::select(prediction, RMSE) %>% unique(), by = "prediction", suffix = c("", "_loo")) %>% 
-        relocate(RMSE_loo, .after = RMSE)
-      
-      ## Save ----
-      if (savedata) {
-        # model output and variable importance
-        write_csv(relimp_all, glue::glue("results/multimodel_inference/prediction_and_relaimpo_{vers_out}.csv"))
-      }
-      
-      
-      ## Calculate statistics for manuscript ----
-      if (eee == 1) {
-        ## Average relative importance of Rao Q for all EFPs
-        avg_relaimpo_RaoQ <- relimp_all %>% dplyr::filter(variable == "Rao_Q_NIRv") %>% pull(rel_importance) %>% mean(na.rm = T)
-        avg_relaimpo_RaoQ
-        ## Save
-        if (savedata) {
-          cat(
-            glue::glue("the average relative importance of Rao Q for all six EFPs was {round(avg_relaimpo_RaoQ * 100, digit = 1)} %"),
-            file = glue::glue("results/multimodel_inference/avg_relaimpo_RaoQ_{vers_out}.txt")
-          )
-        }
-      }
-      
-      
-    } else {
-      warning("Contrasting conditions. Subset biodiversity predictors AND subdivide into ground and satellite?")
-    } # end conditions
-    
-    
+    }
   } # end loop for type of predicted variables (EFPs vs EMFs)
   
   
   
   ### End ----------------------------------------------------------------------
+  print("End of script.")
   toc()
 }
 

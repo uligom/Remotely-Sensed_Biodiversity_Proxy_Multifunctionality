@@ -1,21 +1,26 @@
 ### Function -------------------------------------------------------------------
-calc_GPPsat_NEPmax <- function(data, site, year,
-                               SWfilt = 50, GPPsatfilt = 60
+calc_GPPsat_NEPmax <- function(
+    data, site, year,
+    SWfilt = 50, GPPsatfilt = 60,
+    plotting = plotting_efps
 )
 {
   
   
   ## Utilities ----
-  require(bigleaf)
-  require(dplyr)
-  require(purrr)
-  require(rlang)
-  require(tidyr)
   source("scripts/functions/myLRC.R")
+  source("scripts/functions/plot_timeseries.R")
+  source("scripts/functions/safe_load_packages.R")
+  
+  required_packages <- c("bigleaf", "dplyr", "purrr", "rlang", "tidyr")
+  safe_load_packages(required_packages)
+  
+  
+  
   
   
   ## Output by error ----
-  err_output <- dplyr::tibble(GPPsat = NA_real_, NEP95 = NA_real_, NEP99 = NA_real_)
+  err_output <- dplyr::tibble(LUE = NA_real_, GPPsat = NA_real_, NEP95 = NA_real_, NEP99 = NA_real_)
   
   
   ## Quote & settings ----
@@ -30,7 +35,7 @@ calc_GPPsat_NEPmax <- function(data, site, year,
   
   
   ### Processing ----
-  print(glue::glue("..computing LRC parameters for {site_year}."))
+  print(glue::glue("..computing LRC parameters (GPPsat, LUE, NEPmax) for {site_year}."))
   
   
   ## Filtering ----
@@ -51,18 +56,40 @@ calc_GPPsat_NEPmax <- function(data, site, year,
     
     
   } else if (nrow(data_subset) != 0) { # if dataframe is not empty
-    output <- data_subset %>% 
+    ## Calculate
+    data_subset <- data_subset %>% 
       dplyr::group_by(FiveDaySeq) %>% 
       tidyr::nest(data5days = c(DATETIME, NEE, PPFD, RECO)) %>% 
-      dplyr::mutate(GPPsat = purrr::map_dbl(.x = data5days, .f = myLRC), # calculate GPPsat at 5 days windows
-                    GPPsat = dplyr::if_else(GPPsat < GPPsatfilt, GPPsat, NA_real_) # remove outliers
+      dplyr::mutate(
+        LRC = purrr::map(.x = data5days, .f = myLRC), # calculate GPPsat at 5 days windows
       ) %>% 
       dplyr::ungroup() %>% 
+      tidyr::unnest(cols = c(LRC)) %>% 
+      mutate( # Remove outliers
+        GPPsat = dplyr::if_else(GPPsat < GPPsatfilt & GPPsat > -GPPsatfilt/6, GPPsat, NA_real_)
+      ) %>% 
       tidyr::unnest(cols = data5days) %>% 
-      dplyr::mutate(NEP = -NEE) %>% # take opposite; additional daytime filter not necessary because already filtered: if_else(PPFD > SWfilt * 2 * 2.11, -NEE, NA_real_)) %>% # exclude night values for daily NEP (NB: stricter (x2) than for GPPsat! is this correct?)
-      dplyr::summarise(GPPsat = quantile(GPPsat, 0.95, na.rm = T), # 95th GPPsat quantile (by years if selected)
-                       NEP95 = quantile(NEP, 0.95, na.rm = T), # 95th NEP quantile
-                       NEP99 = quantile(NEP, 0.99, na.rm = T) # 99th NEP quantile
+      dplyr::mutate(NEP = -NEE) # take opposite; additional daytime filter not necessary because already filtered: if_else(PPFD > SWfilt * 2 * 2.11, -NEE, NA_real_)) %>% # exclude night values for daily NEP (NB: stricter (x2) than for GPPsat! is this correct?)
+    
+    
+    ## Plot variable timeseries
+    if (plotting & site %in% rand_sites) {
+      if (savedata) {savepath <- "results/timeseries/efps"} else {savepath <- NA}
+      
+      # Plot
+      data_subset %>% plot_timeseries(y = "LUE", site = site, savepath = savepath)
+      data_subset %>% plot_timeseries(y = "GPPsat", site = site, savepath = savepath)
+      data_subset %>% plot_timeseries(y = "NEP", site = site, savepath = savepath)
+    }
+    
+    
+    ## Aggregate
+    output <- data_subset %>% 
+      dplyr::summarise(
+        LUE = mean(LUE, na.rm = T), # average slope of the light response curve (canopy light-use efficiency)
+        GPPsat = quantile(GPPsat, 0.95, na.rm = T), # 95th GPPsat quantile (by years if selected)
+        NEP95 = quantile(NEP, 0.95, na.rm = T), # 95th NEP quantile
+        NEP99 = quantile(NEP, 0.99, na.rm = T) # 99th NEP quantile
       )
   }
   

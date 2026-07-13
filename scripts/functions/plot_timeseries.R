@@ -1,10 +1,10 @@
 plot_timeseries <- function(data = dat, x = "DATETIME", y = "GPP", color = NA, facet = NA,
                             site = "", savepath = NA) {
   ## Utilities ----
-  require(dplyr)
-  require(ggplot2)
-  require(Hmisc)
-  require(rlang)
+  source("scripts/functions/safe_load_packages.R")
+  
+  required_packages <- c("dplyr", "ggplot2", "Hmisc", "rlang")
+  safe_load_packages(required_packages)
   
   
   ## Quote ----
@@ -75,4 +75,5 @@ plot_timeseries <- function(data = dat, x = "DATETIME", y = "GPP", color = NA, f
   ## Output ----
   return(p0)
 }
+
 # debugonce(plot_timeseries)

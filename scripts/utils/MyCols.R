@@ -10,6 +10,8 @@ orange_teal_light <- c("#F15620", "#2CDDD7") # lighter variant
 orange_teal_dark <- c("#D1400D", "#1EB8B3") # darker/desaturated variant
 red_cyan <- c("#A00000", "#00A0A0") # more contrast
 gray_scale <- c("#000000", "#B3B3B3") # grayscale max contrast
+null_green <- c("#f1f1f1", "#4EA217") # from white-ish gray to green
+null_pink <- c("#f1f1f1", "#FB607F") # from white-ish gray to pink
 
 ## 3-color palettes ----
 Three_colorblind_dark2   <- c("#4a132e", "#483101", "#0c4d4b") # -90p 2x brightness in GIMP
@@ -32,7 +34,11 @@ Three_colors3            <- c("#73C03C", "#F15620", "#3C368C") # original
 Three_colors3_light1     <- c("#a5d681", "#f6926f", "#817db5") # +90p brightness in GIMP
 Three_colors3_light2     <- c("#c5e5ae", "#f9b9a2", "#aeabcf") # +90p x2 brightness in GIMP
 
+Three_colors4            <- c("#B20072", "#0072B2", "#72B200")
+
 Three_red_analogous <- c("#B81E23", "#B8661E", "#B81E70") # red: rgb(184,30,35); orange: rgb(184,102,30); purple: rgb(184,30,112)
+
+Three_pink_green_divergent <- c("#FB607F", "#f1f1f1", "#60FBDC")
 
 ## 4-color palettes ----
 Four_colorblind_dark2  <- c("#4d0c0f", "#0c4d4b", "#2e4d0c", "#2b0c4d") # -90p 2x brightness in GIMP
@@ -41,6 +47,8 @@ Four_colorblind        <- c("#B81E23", "#1eb8b3", "#70b81e", "#661eb8") # origin
 Four_colorblind_light1 <- c("#d16e71", "#6ed1ce", "#a3d16e", "#9c6ed1") # +90p brightness in GIMP;  red: rgb(209,110,113); cyan: rgb(110,209,206)
 Four_colorblind_light2 <- c("#e1a1a3", "#a1e1df", "#c4e1a1", "#bfa1e1") # +90p x2 brightness in GIMP
 Four_ernst_haeckel     <- c("#eb5f68", "#586166", "#B1B59E", "#570104")
+Four_ochre_positive <- c("#EBECF0", "#E7DFC9", "#CEBB7B", "#AA9419") # for positive values from divergent Seven_blue_ochre
+Four_blue_negative <- c("#4B90FE", "#9BB4FA", "#C9D2F6", "#EBECF0") # for negative values from divergent Seven_blue_ochre
 
 ## 5-color palettes ----
 Five_colorblind <- c("#b77508", "#e5ab16", "#1eb8b3", "#a354d1", "#6a2a99")
@@ -54,9 +62,18 @@ Five_vintage_geo3_light1 <- c("#c8c0b4", "#e6dac6", "#dcd8d1", "#ead7c7", "#d2d1
 
 ## 6-color palettes ----
 Six_colorblind <- c("#085578", "#538085", "#faf1e2", "#e3baaa", "#e47e8c", "#ffaa6a")
+Six_pft <- c(
+  `GRASS-NAT` = "#085578", `GRASS-MAN` = "#538085",
+  `TREES-BD` = "#faf1e2", `TREES-NE` = "#e3baaa",
+  OTHER = "#e47e8c", MIXED = "#ffaa6a"
+)
+Six_wheel <- c("#B22D6E", "#F15620", "#FDB71E", "#73C03C", "#1EB8B3", "#3C368E")
+
 
 ## 7-color palettes ----
 Seven_sequential <- c("#f94144", "#f3722c", "#f8961e", "#f9c74f", "#90be6d", "#43aa8b", "#577590")
+Seven_blue_ochre <- c("#4B90FE", "#9BB4FA", "#C9D2F6", "#EBECF0", "#E7DFC9", "#CEBB7B", "#AA9419") # divergent color scale
+Seven_PaulTol <- c("#4477AA", "#EE6677", "#228833", "#CCBB44", "#66CCEE", "#AA3377", "#BBBBBB")
 
 ## 8-color palettes ----
 Eight_categorical1 <- c("#b60e10", "#233341", "#d1e2f0", "#6098b6", "#987143", "#d6828c", "#c9ad99", "#3e9896")
@@ -64,6 +81,9 @@ Eight_categorical2 <- c("#900c3f", "#182b55", "#5f4e94", "#a291c7", "#82cbec", "
 Eight_categorical3 <- c("#6f1926", "#de324c", "#f4895f", "#f8e16f", "#95cf92", "#369acc", "#9656a2", "#cbabd1")
 
 ## 9-color palettes ----
+Nine_categorical1 <- c("#b60e10", "#233341", "#d1e2f0", "#6098b6", "#987143", "#d6828c", "#c9ad99", "#3e9896", "gray50")
+Nine_categorical2 <- c("#900c3f", "#182b55", "#5f4e94", "#a291c7", "#82cbec", "#d94f21", "#febd2b", "#9aab4b", "gray25")
+Nine_categorical3 <- c("#6f1926", "#de324c", "#f4895f", "#f8e16f", "#95cf92", "#369acc", "#9656a2", "#cbabd1", "gray25")
 
 
 ## 10-color categorical palettes ----
@@ -77,6 +97,12 @@ CatCol_igbp <- c(
 )
 Ten_sequential <- c("#F94144", "#F3722C", "#F8961E", "#F9844A", "#F9C74F",
                     "#90BE6D", "#43AA8B", "#4D908E", "#577590", "#277DA1")
+
+## 12-color palettes
+Twelve_sequential <- c("#440154FF", "#414487FF", "#2A788EFF", "#22A884FF", "#7AD151FF", "#FDE725FF",
+                       "#FCFDBFFF", "#FE9F6DFF", "#DE4968FF", "#8C2981FF", "#3B0F70FF", "#000004FF") # based on Gregory Duveilleir's aggregation of viridis + magma from viridis palettes
+Twelve_paired <- c("#a6cee3", "#1f78b4", "#b2df8a", "#33a02c", "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00", "#cab2d6", "#6a3d9a", "#ffff99","#b15928")
+
 
 ## Other ----
 ernst_haeckel <- c("#fff9dc", "#bb9ea0", "#570104", "#aa1405", "#eb5f68", "#cb6b00", "#f5b88b", "#f3d55d", "#ceb57f", "#91916f", "#90acaf") # manual extraction from Haeckel | Jellyfish art, Natural form art, Scientific illustration (https://i.pinimg.com/originals/e3/b0/16/e3b016bc648bb393772120a1a71923e7.jpg)

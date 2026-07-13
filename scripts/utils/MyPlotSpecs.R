@@ -1,13 +1,16 @@
-### Author: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
-
 ## Points
 point_border_color <- "white"
 point_fill_color <- "#EE4500"
 point_shape <- 21
+# Point sizes
+point_size_huge <- 15
+point_size_very_big <- 12
 point_size_big <- 9
 point_size_medium <- 6
 point_size_medium_small <- 4.5
 point_size_small <- 3
+point_size_very_small <- 2
+point_size_tiny <- 1
 
 ## Transparency
 alpha_transparent <- 0.5
@@ -22,6 +25,7 @@ text_size_small <- 14
 
 ## Lines/strokes
 line_color_plot <- "gray25"
+line_width_extrathick <- 2
 line_width_thick <- 1.5
 line_width_medium <- 1
 line_width_thin <- 0.7

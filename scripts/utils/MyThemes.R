@@ -1,18 +1,45 @@
-### Author: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
+### Utilities ------------------------------------------------------------------
+## Functions
+source("scripts/functions/safe_load_packages.R")
+source("scripts/utils/MyPlotSpecs.R")
 
-source("scripts/themes/MyPlotSpecs.R")
+## Packages
+required_packages <- c(
+  "ggplot2"      # tidy plots
+  )
+safe_load_packages(required_packages)
+
+
+
+### General theme specs --------------------------------------------------------
+text_relsize_big <- 1.5
+text_relsize_mediumbig <- 1.2
+text_relsize_medium <- 1.1
+
+
+
+### Custom Themes --------------------------------------------------------------
+# PARENT → text: The root text element. All other text elements inherit from this unless overridden.
+# CHILDREN → axis.text, axis.title, plot.title, legend.text, legend.title, plot.title, plot.subtitle, plot.caption, strip.text, strip.text.*
+# GRANDCHILDREN → axis.text.x, axis.text.y, axis.title.x, axis.title.y, strip.text.x, strip.text.y
 
 theme_combine <- theme(
-  axis.text = element_text(size = text_size_medium),
-  axis.title = element_text(size = text_size_big),
+  text = element_text(size = 12),                                               # PARENT
+  axis.text = element_text(size = rel(text_relsize_medium)),                      # CHILD
+  axis.title = element_text(size = rel(text_relsize_mediumbig)),                  # CHILD
+  legend.text = element_text(size = rel(text_relsize_mediumbig)),                 # CHILD
+  legend.title = element_text(face = "bold", size = rel(text_relsize_medium)),    # CHILD
+  plot.caption = element_text(size = rel(text_relsize_mediumbig)),                # CHILD
+  plot.tag = element_text(size = rel(text_relsize_mediumbig)),                    # CHILD
+  strip.text = element_text(size = rel(text_relsize_big)),                        # CHILD
+  title = element_text(size = rel(text_relsize_big)),                             # CHILD
+  
   legend.key.size = unit(12, "mm"), # space out legend elements
-  legend.text = element_text(size = text_size_medium + 3),
-  legend.title = element_text(face = "bold", size = text_size_big),
-  # plot.margin = unit(c(0, 0, 0, 0), "cm"), # remove margins around individual plots
-  strip.text = element_text(size = text_size_big), # facet title strips
-  strip.background = element_rect(fill = "white"),
-  text = element_text(size = text_size_medium),
-  title = element_text(size = text_size_big)
+  strip.background = element_rect(fill = "white")
+)
+
+theme_transp_strip <- theme(
+  strip.background = element_rect(fill = NA)
 )
 
 theme_print <- theme(

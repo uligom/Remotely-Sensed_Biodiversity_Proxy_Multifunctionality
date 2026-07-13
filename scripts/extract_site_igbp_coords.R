@@ -1,6 +1,6 @@
 #### EXTRACT IGBP CLASS AND SITE COORDINATES
 
-### Authors: Ulisse Gomarasca
+### Authors: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
 ### Script settings ------------------------------------------------------------
 # Clear environment
 rm(list = ls(all = TRUE))
@@ -13,7 +13,7 @@ library(tictoc)
 tic("") # Script run time.
 
 # Data settings
-savedata <- as.logical(readline(prompt = "Save the output of the script? T/F:")) # ask if output should be saved
+savedata <- as.logical(readline(prompt = "Save the output of the script? T/F: ")) # ask if output should be saved
 if (savedata) {
   eval_file <- glue::glue("results/analysis_evaluation/evaluation_extract_site_igbp_coords.txt")
   cat(paste0("##### IMPORT AND EXTRACT SITE INFORMATION #####", "\n"), file = eval_file, append = F) # initialize evaluation text
@@ -22,32 +22,35 @@ if (savedata) {
 
 
 ### Utilities ------------------------------------------------------------------
-## Packages
-library(dplyr)      # tidy data manipulation
-options(dplyr.summarise.inform = F) # suppress summary info
-library(furrr)      # map in parallel
-library(future)     # plan parallelization
-library(ggplot2)    # tidy plots
-library(janitor)    # clean data
-library(lubridate)  # dates
-library(ncdf4)      # netcdf files
-library(purrr)      # map functions
-library(quantreg)   # quantile regression
-library(readr)      # read csv files
-library(rlang)      # quoting inside functions
-library(stringr)    # tidy string manipulation
-library(tictoc)     # measure time
-library(tidyr)      # clean and reshape tidy data
-
 ## Functions
+source("scripts/functions/safe_load_packages.R")
 source("scripts/functions/import_COORDS.R")
 source("scripts/functions/import_IGBP.R")
+
+## Packages
+required_packages <- c(
+  "dplyr",      # tidy data manipulation
+  "furrr",      # map in parallel
+  "future",     # plan parallelization
+  "ggplot2",    # tidy plots
+  "janitor",    # clean data
+  "lubridate",  # dates
+  "ncdf4",      # netcdf files
+  "purrr",      # map functions
+  "quantreg",   # quantile regression
+  "readr",      # read csv files
+  "rlang",      # quoting inside functions
+  "stringr",    # tidy string manipulation
+  "tictoc",     # measure time
+  "tidyr"       # clean and reshape tidy data
+)
+safe_load_packages(required_packages)
 
 
 
 ### Data files -----------------------------------------------------------------
 data_path <- "//minerva/BGI/work_4/scratch/jnelson/4Sinikka/data20240123/"
-data_path2 <- "//minerva/BGI/work_1/scratch/fluxcom/sitecube_proc/model_files/"
+data_path2 <- "//minerva/BGI/work_4/scratch/fluxcom/sitecube_proc/model_files_20231129/"
 
 ## Sites
 sites <- str_extract(list.files(data_path), pattern = "[:upper:]{2}-[:alnum:]{3}") %>% unique()
@@ -77,12 +80,12 @@ site_list <- split(sites[rangesites], seq(length(sites[rangesites]))); # site_li
 
 
 ## Define computing strategy ----
-if (getwd() == "C:/Users/ugomar/Desktop/multifunctionality") {
-  plan(multisession, workers = 2) # works as of 26.01.2024 17:05
-} else if (getwd() == "/Net/Groups/BGI/people/ugomar/R/B_EF") {
-  ncpus <- as.integer(readline(prompt = "How many CPUs should be used for parallel computing? (Careful not to crash your computer!)"))
-  plan(cluster, workers = ncpus)
-}
+# if (getwd() == "C:/Users/ugomar/Desktop/multifunctionality") {
+#   plan(multisession, workers = 2) # works as of 26.01.2024 17:05
+# } else if (getwd() == "/Net/Groups/BGI/people/ugomar/R/B_EF") {
+ncpus <- as.integer(readline(prompt = "How many CPUs should be used for parallel computing? (Careful, check core availability!): "))
+plan(multisession, workers = ncpus)
+# }
 
 
 ### Run functions (parallel computing) -----------------------------------------
@@ -130,13 +133,13 @@ coords_out <- coords_out[rowSums(is.na(coords_out[, 0:ncol(coords_out)])) < ncol
 
 ### Save -----------------------------------------------------------------------
 if (savedata) {
-  write_csv(igbp_out, glue::glue("data/input/igbp.csv")) # igbp
-  write_csv(coords_out, glue::glue("data/input/coords.csv")) # coords
+  write_csv(igbp_out, glue::glue("data/igbp.csv")) # igbp
+  write_csv(coords_out, glue::glue("data/coords.csv")) # coords
 }
 
 
 
 ### End ------------------------------------------------------------------------
 toc(log = T)
-txt <- glue::glue("Script total run time: {tic.log(format = T)[[1]]}."); tic.clearlog()
+txt <- glue::glue("Script total run time: {tic.log(format = T)[[1]]}."); print(txt); tic.clearlog()
 if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}

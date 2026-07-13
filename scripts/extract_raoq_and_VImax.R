@@ -1,7 +1,7 @@
 #### EXPLORE RAOQ
-# RaoQ estimates from Javier Pacheco-Labrador
+# RaoQ estimates from Javier
 
-### Author: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
+### Authors: Ulisse Gomarasca
 ### Script start ---------------------------------------------------------------
 # Clear environment
 rm(list = ls(all = TRUE))
@@ -9,10 +9,12 @@ rm(list = ls(all = TRUE))
 
 
 ### Options --------------------------------------------------------------------
-# Data settings
-efp_in <- as.character(read.table("data/efp_version.txt"))
+## Input
+clim_vers <- as.character(read.table("data/efp_version.txt"))
 
-savedata <- as.logical(readline(prompt = "Save the output of the script? T/F:")) # ask if output should be saved
+
+## Output
+savedata <- as.logical(readline(prompt = "Save the output of the script? T/F: ")) # ask if output should be saved
 
 if (savedata) {
   eval_file <- glue::glue("results/analysis_evaluation/evaluation_raoq_extraction.txt")
@@ -21,30 +23,35 @@ if (savedata) {
 
 
 ### Utilities ------------------------------------------------------------------
-## Packages
-library(dplyr)      # tidy data manipulation
-options(dplyr.summarise.inform = F) # suppress summary info
-library(ggplot2)    # tidy plot
-library(glue)       # build regex strings
-library(lubridate)  # dates
-library(readr)      # read tables
-library(scales)     # scale functions for visualization
-library(stringr)    # string manipulation
-library(terra)      # raster data
-library(tidyr)
-
 ## Functions
+source("scripts/functions/safe_load_packages.R")
 source("scripts/functions/plot_timeseries.R")
-source("scripts/themes/MyThemes.R")
-source("scripts/themes/MyCols.R")
-source("scripts/themes/MyPlotSpecs.R")
+
+## Packages
+required_packages <- c(
+  "dplyr",      # tidy data manipulation
+  "ggplot2",    # tidy plot
+  "glue",       # build regex strings
+  "lubridate",  # dates
+  "readr",      # read tables
+  "scales",     # scale functions for visualization
+  "stringr",    # string manipulation
+  "terra",      # raster data
+  "tidyr"
+)
+safe_load_packages(required_packages)
+
+## Other
+source("scripts/utils/MyThemes.R")
+source("scripts/utils/MyCols.R")
+source("scripts/utils/MyPlotSpecs.R")
 
 
 
 ### Data -----------------------------------------------------------------------
 ## IGBP
-igbp <- read_csv("data/input/igbp.csv", show_col_types = F)
-clim <- read_csv(glue::glue("data/inter/clim_{efp_in}.csv"), show_col_types = F)
+igbp <- read_csv("data/igbp.csv", show_col_types = F)
+clim <- read_csv(glue::glue("data/inter/clim_{clim_vers}.csv"), show_col_types = F)
 
 ## Folder paths
 tif_folder <- "//minerva/BGI/work_2/ugomar/S2_L2A_fluxnet_incl_baresoil/"
@@ -57,7 +64,7 @@ bands_raoq_files <- list.files(raoq_folder, pattern = ".csv") # available files 
 ## Sites with available RaoQ data files
 sites <- stringr::str_extract(bands_raoq_files, "[:graph:]+(?=_S2_2A_bands.csv)") %>% na.omit() # extract site names
 # Check missing sites
-sites_upload <- read_csv("data/inter/site_list_all.csv", show_col_types = F) %>% pull(SITE_ID)
+sites_upload <- read_csv("data/output/site_list_all.csv", show_col_types = F) %>% pull(SITE_ID)
 sites_missing <- setdiff(sites_upload, sites)
 
 # Check if downloaded data is present and where
@@ -86,12 +93,15 @@ if (length(sites_missing) > 0) {
 dat_inclBareSoil <- tibble() # initialize
 for (ii in 1:length(sites)) {
   ## RaoQ from bands for all scenes ----
-  dat_site <- read_delim(glue::glue("{raoq_folder}{bands_raoq_files[ii]}"), delim = ";",
-                         show_col_types = F) %>% 
+  dat_site <- read_delim(
+    glue::glue("{raoq_folder}{bands_raoq_files[ii]}"), delim = ";", show_col_types = F
+    ) %>% 
     # drop_na(Year)
     bind_cols(
       tibble(
-        DATE = terra::rast(x = glue("//minerva/BGI/work_2/ugomar/S2_L2A_fluxnet_incl_baresoil/S2_fluxsites_cutouts/{sites[ii]}_S2_2A_bandB4.tif"))@ptr[["names"]] %>% 
+        DATE = terra::rast(
+          x = glue::glue("//minerva/BGI/work_2/ugomar/S2_L2A_fluxnet_incl_baresoil/S2_fluxsites_cutouts/{sites[ii]}_S2_2A_bandB4.tif")
+          )@pntr[["names"]] %>% 
           str_extract(pattern = "[:digit:]{8}") %>%
           as.Date(format = "%Y%m%d")
       )
@@ -171,7 +181,7 @@ rm(dat_site) # clean memory
 # ## Sites with available RaoQ data files
 # sites <- stringr::str_extract(bands_raoq_files, "[:graph:]+(?=_S2_2A_bands.csv)") %>% na.omit() # extract site names
 # # Check missing sites
-# sites_upload <- read_csv("data/inter/site_list_all.csv", show_col_types = F) %>% pull(SITE_ID)
+# sites_upload <- read_csv("data/site_list_all.csv", show_col_types = F) %>% pull(SITE_ID)
 # sites_missing <- setdiff(sites_upload, sites)
 # 
 # # Check if downloaded data is present and where
@@ -302,35 +312,36 @@ rm(dat_site) # clean memory
 # 
 # 
 
-### Plot -----------------------------------------------------------------------
-## Data for plotting ----
-dat_plot <- dat_inclBareSoil %>% mutate(f_valid_samples = 0.2 * round(f_valid_samples / 0.2))
-
-
-## Time series of RaoQ metrics ----
-dat_plot %>% plot_timeseries(x = "DATE", y = "RaoQ_S2_median", color = "f_valid_samples", facet = "SITE_ID", savepath = "results/timeseries/")
-
-dat_plot %>% plot_timeseries(x = "DATE", y = "RaoQ_NDVI_S2_median", color = "f_valid_samples", facet = "SITE_ID", savepath = "results/timeseries/")
-
-dat_plot %>% plot_timeseries(x = "DATE", y = "RaoQ_NIRv_S2_median", color = "f_valid_samples", facet = "SITE_ID", savepath = "results/timeseries/")
-
-
-
-
 ### Calculate/rename VIs -------------------------------------------------------
-dat <- dat_inclBareSoil %>%
-  select(-contains("NDVI_median"), -contains("NIRv_median"), 
-         -contains("NDVI_std"), -contains("NIRv_std")) %>% 
-  rename(NDVI_median = NDVI_S2_median, NDVI_std = NDVI_S2_std,
-         NIRv_median = NIRv_S2_median, NIRv_std = NIRv_S2_std)
-  # mutate(
+dat <- dat_inclBareSoil %>% 
+  select( # remove empty duplicates
+    -contains("NDVI_median"), -contains("NIRv_median"), 
+    -contains("NDVI_std"), -contains("NIRv_std")
+  ) %>% 
+  rename_with( # remove unnecessary S2 suffix from variable names
+    .cols = matches("N[[:alpha:]]{3}_S2"), .fn = ~str_replace(string = ., pattern = "_S2", replacement = "")
+  )
+  # mutate( # test-calculate manually
   #   NDVI_median = (B8_median - B4_median) / (B8_median + B4_median), # (NIR - red) / (NIR + red)
   #   NIRv_median = B8_median / NDVI_median # NIR / NDVI
   # )
+  
+  
+  
+### Plot -----------------------------------------------------------------------
+## Data for plotting ----
+dat_plot <- dat %>% mutate(f_valid_samples = 0.2 * round(f_valid_samples / 0.2))
 
 
+## Time series of RaoQ metrics ----
+if (savedata) {savepath <- "results/timeseries/"} else {savepath <- NA}
 
-### Plot VIs -------------------------------------------------------------------
+dat_plot %>% plot_timeseries(x = "DATE", y = "RaoQ_S2_median", color = "f_valid_samples", facet = "SITE_ID", savepath = savepath)
+dat_plot %>% plot_timeseries(x = "DATE", y = "RaoQ_NDVI_median", color = "f_valid_samples", facet = "SITE_ID", savepath = savepath)
+dat_plot %>% plot_timeseries(x = "DATE", y = "RaoQ_NIRv_median", color = "f_valid_samples", facet = "SITE_ID", savepath = savepath)
+
+
+## Plot VIs ----
 ## Plot NDVI
 p_ndvi <- dat %>%
   mutate(f_valid_samples = 0.2 * round(f_valid_samples / 0.2)) %>% # round values
@@ -363,10 +374,12 @@ q_thresh <- 0.9
 f_thresh <- 0.5
 
 ## Number of sites before filtering
-sites_unfilt <- dat %>% drop_na(RaoQ_S2_median, RaoQ_NDVI_S2_median, RaoQ_NIRv_S2_median) %>%
-  select(SITE_ID) %>% unique()
+sites_unfilt <- dat %>%
+  drop_na(RaoQ_S2_median, RaoQ_NDVI_median, RaoQ_NIRv_median) %>%
+  select(SITE_ID) %>%
+  unique()
 
-txt <- glue::glue("{nrow(sites_unfilt)} NEON sites with valid RaoQ estimates BEFORE filtering.")
+txt <- glue::glue("{nrow(sites_unfilt)} sites with valid RaoQ estimates BEFORE filtering.")
 print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
 
 ## Filtering
@@ -382,10 +395,12 @@ dat_filt <- dat %>%
 
 
 ## Number of sites after filtering
-sites_filt <- dat_filt %>% drop_na(RaoQ_S2_median, RaoQ_NDVI_S2_median, RaoQ_NIRv_S2_median) %>%
-  select(SITE_ID) %>% unique()
+sites_filt <- dat_filt %>%
+  drop_na(RaoQ_S2_median, RaoQ_NDVI_median, RaoQ_NIRv_median) %>%
+  select(SITE_ID) %>%
+  unique()
 
-txt <- glue::glue("{nrow(sites_filt)} NEON sites with valid RaoQ estimates AFTER filtering.")
+txt <- glue::glue("{nrow(sites_filt)} sites with valid RaoQ estimates AFTER filtering.")
 print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
 txt <- paste0("--> Excluded sites: ", setdiff(sites_unfilt, sites_filt) %>% pull(SITE_ID) %>% paste(collapse = ", "))
 print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
@@ -396,13 +411,11 @@ print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
 dat_agg <- dat_filt %>% 
   dplyr::select(-DATE, -NDVIthresh) %>% 
   group_by(SITE_ID) %>% 
-  mutate(NDVImax = quantile(NDVI_median, 0.95, na.rm = T), # calculate NDVImax
-         NIRvmax = quantile(NIRv_median, 0.95, na.rm = T) # calculate NIRvmax
-         ) %>%
-  summarise(across(.cols = c(where(is.double), -NDVImax, -NIRvmax), ~ mean(.x, na.rm = T)),
-            NDVImax = unique(NDVImax),
-            NIRvmax = unique(NIRvmax)
-            ) %>% # average every variable
+  summarise(
+    NDVImax = quantile(NDVI_median, 0.95, na.rm = T), # calculate NDVImax
+    NIRvmax = quantile(NIRv_median, 0.95, na.rm = T), # calculate NIRvmax
+    across(.cols = c(where(is.double), -NDVImax, -NIRvmax), ~mean(.x, na.rm = T))
+    ) %>% # average every variable
   ungroup() %>% 
   relocate(NDVImax, .after = NDVI_median) %>% 
   relocate(NIRvmax, .after = NIRv_median)
@@ -412,29 +425,24 @@ dat_agg <- dat_filt %>%
 ### Rename RaoQ variables ----
 dat_agg <- dat_agg %>% 
   dplyr::rename(
-    Rao_Q_S2 = RaoQ_S2_median,
-    Rao_Q_NDVI = RaoQ_NDVI_S2_median,
-    Rao_Q_NIRv = RaoQ_NIRv_S2_median
+    RaoQ_S2 = RaoQ_S2_median,
+    RaoQ_NDVI = RaoQ_NDVI_median,
+    RaoQ_NIRv = RaoQ_NIRv_median
   ) %>% 
   glimpse()
 
 
+
 ### Calculate correlations -----------------------------------------------------
 temp <- dat_agg %>% 
-  dplyr::select(NIRv_median, Rao_Q_NIRv) %>%
+  dplyr::select(NIRv_median, RaoQ_NIRv) %>%
   drop_na()
 
-cor_coeff <- cor(temp$NIRv_median, temp$Rao_Q_NIRv, method = "kendall")
-# Kendall more robust with small sample sizes or outliers
-cor_coeff
+tau <- cor(temp$NIRv_median, temp$RaoQ_NIRv, method = "kendall")
+# Kendall method is more robust, especially with small sample sizes or outliers (and recommended if the data do not necessarily come from a bivariate normal distribution).
 
-## Save correlation coefficient
-if (savedata) {
-  cat(
-    glue::glue("Kendall’s tau = {round(cor_coeff, digits = 2)} over {nrow(temp)} sites"),
-    file = "results/correlation/RaoQNIRv_vs_NIRvmedian.txt"
-    )
-}
+txt <- glue("Kendall’s τ = {format(tau, digits = 2)} over {nrow(temp)} sites")
+print(txt); if (savedata) {cat(paste0(txt, "\n"), file = "results/metrics_corr/RaoQ_NIRvMedian_correlation.txt", append = F)}
 
 
 
@@ -453,4 +461,8 @@ if (savedata) {
   ggplot2::ggsave(filename = glue::glue("NIRv_FromBandsMedians.jpg"), plot = p_nirv, device = "jpeg",
                   path = "results/timeseries/", width = 508, height = 285.75, units = "mm", dpi = 150) # 1920 x  1080 px resolution (16:9)
 }
+
+
+
 ### End ------------------------------------------------------------------------
+print("End of script.")

@@ -1,18 +1,17 @@
 #### EXTRACT CLIMATE
 
-### Author: Ulisse Gomarasca
+### Author: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
 
 ### Function -------------------------------------------------------------------
 import_data_and_calc_CLIM <- function(
     site_list = list("AR-SLu", "AT-Neu", "AU-Cpr"),
-    path = "//minerva/BGI/scratch/jnelson/4Sinikka/data20240123/", path2 = "//minerva/BGI/work_1/scratch/fluxcom/sitecube_proc/model_files/",
+    path_fluxes = "//minerva/BGI/scratch/jnelson/4Sinikka/data20240123/", path_meteo = "//minerva/BGI/work_1/scratch/fluxcom/sitecube_proc/model_files/",
     future_env = list(savedata, eval_file, grouping_var, rand_sites, QCfilt),
     plotting = F
 ) {
   
   
   ### Utilities ----------------------------------------------------------------
-  ## Packages
   require(dplyr)      # tidy data manipulation
   require(lubridate)
   require(ncdf4)
@@ -21,9 +20,6 @@ import_data_and_calc_CLIM <- function(
   library(rlang)      # quoting inside functions
   require(stringr)    # string manipulation
   require(tidyr)      # clean and reshape tidy data
-  
-  ## Functions
-  source("scripts/functions/plot_timeseries.R")
   
   
   
@@ -58,7 +54,7 @@ import_data_and_calc_CLIM <- function(
   
   ## Fluxes
   nc_fluxes <- tryCatch({
-    ncdf4::nc_open(filename = glue::glue("{path}{site}.nc")) # fluxes
+    ncdf4::nc_open(filename = glue::glue("{path_fluxes}{site}.nc")) # fluxes
   }, error = function(err) {
     return(NA)
   })
@@ -71,7 +67,7 @@ import_data_and_calc_CLIM <- function(
   }
   
   nc_fluxes2 <- tryCatch({
-    ncdf4::nc_open(filename = glue::glue("{path2}{site}_meteo.nc"))
+    ncdf4::nc_open(filename = glue::glue("{path_meteo}{site}_meteo.nc"))
   }, error = function(err) {
     return(NA)
   })
@@ -325,6 +321,7 @@ import_data_and_calc_CLIM <- function(
   
   
   ### Clean memory -------------------------------------------------------------
+  nc_close(nc_fluxes); nc_close(nc_fluxes2) # close netcdf files
   rm(nc_fluxes, nc_fluxes2, timestart_fluxes, timestart_fluxes2, dat)
   gc() # clean memory usage
   

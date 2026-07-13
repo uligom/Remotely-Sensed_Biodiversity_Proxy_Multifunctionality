@@ -4,30 +4,25 @@
 ## Arguments -----
 # data    = dataframe containing fluxnet data for single sites
 # site    = character, name of the site
-# QCfilt  = Integer or vector of integers from 0 to 4 corresponding to Quality
-#           Checks to be retained. E.g. GQfilt = c(0, 1) filters out bad quality
-#           data with quality flag set to 2, 3, or 4.
-# GSfilt  = Number between 0 and 1, corresponding to Growing Season filter, i.e.
-#           the relative minimum threshold (e.g. 0.3 = 30%) to be excluded from the
-#           range of the GPP data.
-# Pfilt   = Precipitation threshold used to identify a precipitation event (mm) (from filter.data function).
 # SWfilt  = Value of minimum threshold for ShortWave filter, e.g. to exclude for
 #           nighttime data below 20, 100 or 200.
-# USfilt  = Value of minimum threshold for USTAR filter.
 
 
 ### Function -------------------------------------------------------------------
-calc_WUE <- function(data, site, year,
-                     SWfilt = 200
+calc_WUE <- function(
+    data, site, year,
+    SWfilt = 200,
+    plotting = plotting_efps
 )
 {
   
   
   ## Utilities ----
-  require(bigleaf)
-  require(dplyr)
-  require(rlang)
-  require(tidyr)
+  source("scripts/functions/plot_timeseries.R")
+  source("scripts/functions/safe_load_packages.R")
+  
+  required_packages <- c("bigleaf", "dplyr", "rlang", "tidyr")
+  safe_load_packages(required_packages)
   
   
   ## Quote & settings ----
@@ -42,17 +37,18 @@ calc_WUE <- function(data, site, year,
   
   
   ### Processing ----
-  print('..computing WUE Metrics for {site_year}.')
+  print(glue::glue('..computing WUE Metrics for {site_year}.'))
   
   
   ## Filtering ----
   ## Daylight (+ Friction Velocity filter)
   data <- data %>% dplyr::filter(SW_IN > SWfilt) # filter instead of replacing with NA (SWfilt should be 200 for water EFPs)
+  # NB: u* filter should not be necessary for WUE metrics
   
-  # Using only measured data: removing NA for wind speed
+  ## Using only measured data: removing NA for wind speed
   data <- data %>% tidyr::drop_na(WS)
   
-  # Convert units if needed
+  ## Convert units if needed ----
   if (!"VPD_kPa" %in% names(data)) {data <- data %>% dplyr::mutate(VPD_kPa = VPD / 10)} # convert units of VPD from [hPa] to [kPa]
   
   
@@ -74,15 +70,34 @@ calc_WUE <- function(data, site, year,
     
     
   } else if (nrow(data_subset) != 0) { # if dataframe is not empty
+    ## Calculate WUE metrics
     wue_metrics <- data_subset %>% 
       as.data.frame() %>% 
-      ## Calculate WUE metrics
       bigleaf::WUE.metrics(GPP = "GPP", NEE = "NEE", LE = "LE", VPD = "VPD_kPa", Tair = "TA",
                            constants = bigleaf::bigleaf.constants())
     
+    ## Format output
     output <- tibble(var = names(wue_metrics), value = wue_metrics) %>% # convert to tibble
       tidyr::pivot_wider(names_from = var, values_from = value) %>% 
       dplyr::select(WUE, uWUE) # variables of interest
+    
+    
+    ## Plot variable timeseries
+    if (plotting & site %in% rand_sites) {
+      if (savedata) {savepath <- "results/timeseries/efps"} else {savepath <- NA}
+
+      # Data
+      dat_plot <- data_subset %>%
+        select(DATETIME) %>%
+        mutate(
+          WUE = output$WUE,
+          uWUE = output$uWUE
+        )
+
+      # Plot
+      dat_plot %>% plot_timeseries(y = "WUE", site = site, savepath = savepath) # here it will be a horizontal line
+      dat_plot %>% plot_timeseries(y = "uWUE", site = site, savepath = savepath) # here it will be a horizontal line
+    }
   }
   
   

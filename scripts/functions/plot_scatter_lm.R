@@ -1,14 +1,21 @@
 ### Function -------------------------------------------------------------------
 plot_scatter_lm <- function(data = dat, x = GPPsat, y = Rao_Q_NIRv, group = NA) {
   ## Utilities ----
-  require(dplyr)
-  require(rlang)
-  require(ggplot2)
-  require(ggrepel)
-  require(magrittr)
-  require(tidyr)
-  source("scripts/themes/MyPlotSpecs.R")
-  source("scripts/themes/MyThemes.R")
+  source("scripts/functions/safe_load_packages.R")
+  
+  required_packages <- c(
+    "dplyr",
+    "rlang",
+    "ggplot2",
+    "ggrepel",
+    "magrittr",
+    "tidyr"
+  )
+  safe_load_packages(required_packages)
+  
+  source("scripts/utils/MyPlotSpecs.R")
+  source("scripts/utils/MyThemes.R")
+
   
   ## Quote ----
   x <- rlang::ensym(x)

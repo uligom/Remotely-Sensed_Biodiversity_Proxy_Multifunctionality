@@ -1,9 +1,9 @@
+#### PLOT COEFFICIENTS OF MULTIMODEL INFERENCE
+
+### Author: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
+
+
 #### Function ----------------------------------------------------------------
-# PLOT COEFFICIENTS OF MULTIMODEL INFERENCE
-
-### Authors: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
-
-
 plot_mumin_effects <- function(test = "main") {
   ### Function input -----------------------------------------------------------
   if (test == "main") {test_vers <- "v01."}
@@ -14,41 +14,52 @@ plot_mumin_effects <- function(test = "main") {
   
   
   
+  ### Utilities ----------------------------------------------------------------
+  ## Functions
+  source("scripts/functions/safe_load_packages.R")
+  source("scripts/functions/rm_plot_titles.R")
+  
+  ## Packages
+  required_packages <- c(
+    "dplyr",        # tidy data manipulation
+    "ggplot2",      # tidy plots
+    "glue",         # glue strings
+    "patchwork",    # combine plots
+    "purrr",        # map functions
+    "RColorBrewer", # plot color functionalities
+    "readr",        # read table format files
+    "scales",       # modify scales of axes
+    "stringr",      # tidy string manipulation
+    "tictoc",       # measure time
+    "tidyr"         # clean and reshape tidy data
+  )
+  safe_load_packages(required_packages)
+  
+  ## Other
+  source("scripts/utils/MyThemes.R")
+  source("scripts/utils/MyCols.R")
+  source("scripts/utils/MyPlotSpecs.R")
+  source("scripts/utils/units.R")
+  
+  
+  
   ### Script settings ----------------------------------------------------------
-  library(tictoc)
   tic() # measure run time
   
   # Data settings
-  savedata <- as.logical(readline(prompt = "Save the output of the script? T/F:")) # ask if output should be saved
+  savedata <- as.logical(readline(prompt = "Save the output of the script? T/F: ")) # ask if output should be saved
   
   efp_in <- as.character(read.table("data/efp_version.txt"))
+  emf_in <- as.character(read.table("data/emf_version.txt"))
   # iav_in <- as.character(read.table("data/iav_version.txt"))
+  struct_in <- as.character(read.table("data/struct_version.txt"))
   dat_in <- as.character(read.table("data/data_version.txt"))
-  vers <- paste0(test_vers, stringr::str_extract(dat_in, "[:digit:]+[:punct:]?[:digit:]*[:punct:]?[:digit:]*"))
+  vers <- as.character(read.table("data/mumin_analysis_version.txt")) #paste0(test_vers, stringr::str_extract(dat_in, "[:digit:]+[:punct:]?[:digit:]*[:punct:]?[:digit:]*"))
   # v01.030, 08.05.2024:  Main analyses.
   # v01b.030,14.05.2024:  Testing measured LAImax in models.
   # v02.030, 21.05.2024:  Testing NIRv_median together with RaoQ_NIRv.
   # v03.030, 27.05.2024:  Testing soil variables.
   # v04.030, 27.05.2024:  Testing only IAV climate variables.
-  
-  
-  
-  ### Utilities ----------------------------------------------------------------
-  ## Packages
-  library(dplyr)        # tidy data manipulation
-  options(dplyr.summarise.inform = F) # suppress summary info
-  library(ggplot2)      # tidy plots
-  library(patchwork)    # combine plots
-  library(RColorBrewer) # plot color functionalities
-  library(readr)        # read table format files
-  library(scales)       # modify scales of axes
-  library(stringr)      # string manipulation
-  library(tidyr)        # clean and reshape tidy data
-  
-  ## Other
-  source("scripts/themes/MyThemes.R")
-  source("scripts/themes/MyCols.R")
-  source("scripts/themes/MyPlotSpecs.R")
   
   
   
@@ -76,30 +87,40 @@ plot_mumin_effects <- function(test = "main") {
     
     
     ### More output settings ---------------------------------------------------
-    vers_in <- glue::glue("{response}_{subx}_{raoq_in}_{vers}")
-    vers_out <- vers_in
+    vers_in <- glue("{response}_{subx}_{raoq_in}_{test}_{vers}")
+    vers_out <- paste0(vers_in, "")
     
     
     
     ### Data -------------------------------------------------------------------
-    dat <- read_csv(glue::glue("results/multimodel_inference/prediction_and_relaimpo_{vers_in}.csv"), show_col_types = F)
+    dat <- read_csv(glue("results/multimodel_inference/prediction_and_relaimpo_{vers_in}.csv"), show_col_types = F)
     
     
     
     ### Vector names -----------------------------------------------------------
-    ## Meteorology
-    if (response == "efp") { # analysis on full-timeseries EFPs
-      load(file = glue::glue("data/inter/clim_names_{efp_in}.RData"));  clim_names <- clim_names[clim_names %in% dat$variable]
-      # } else if (response == "iav") { # analysis on stability of EFPs
-      #   load(file = glue::glue("data/inter/clim_names_{efp_in}.RData")) # mean Meteorology
-      #   load(file = glue::glue("data/inter/clim_iav_names_{iav_in}.RData")) # Meteorology variability
-      #   clim_names <- c(clim_names[clim_names %in% dat$variable], clim_iav_names[clim_iav_names %in% dat$variable]);
-    } else if (response == "emf") { # analysis on multifunctionality of EFPs
-      load(file = glue::glue("data/inter/clim_names_{efp_in}.RData"));  clim_names <- clim_names[clim_names %in% dat$variable]
-    }
+    ## EFPs
+    load(file = glue("data/inter/efps_names_{efp_in}.RData"))
+    
+    ## EMF
+    load(file = glue("data/inter/emf_names_{emf_in}.RData"))
+    
+    ## Meteorology & other
+    load(file = glue("data/inter/clim_names_{efp_in}.RData"));  clim_names <- clim_names[clim_names %in% dat$variable]
+    # if (response == "efp") { # analysis on full-timeseries EFPs
+    #   load(file = glue("data/inter/clim_names_{efp_in}.RData"));  clim_names <- clim_names[clim_names %in% dat$variable]
+    # } else if (response == "iav") { # analysis on stability of EFPs
+    #   load(file = glue("data/inter/clim_names_{efp_in}.RData")) # mean Meteorology
+    #   load(file = glue("data/inter/clim_iav_names_{iav_in}.RData")) # Meteorology variability
+    #   clim_names <- c(clim_names[clim_names %in% dat$variable], clim_iav_names[clim_iav_names %in% dat$variable]);
+    # } else if (response == "emf") { # analysis on multifunctionality of EFPs
+    # load(file = glue("data/inter/clim_names_{efp_in}.RData"));  clim_names <- clim_names[clim_names %in% dat$variable]
+    # }
+    
+    ## Soil properties
+    soil_names <- c("AWCh1", "AWCh2", "AWCh3", "CLAY", "SAND", "SILT", "ORCDRC", "PHIHOX")
     
     ## Structure
-    load(file = glue::glue("data/inter/struct_names_{efp_in}.RData"));  struct_names <- struct_names[struct_names %in% dat$variable]
+    load(file = glue("data/inter/struct_names_{struct_in}.RData"));  struct_names <- struct_names[struct_names %in% dat$variable]
     
     
     
@@ -126,7 +147,7 @@ plot_mumin_effects <- function(test = "main") {
     ### Plot -------------------------------------------------------------------
     ## Labels and options ----
     ## Add color labels
-    if (any(c("CLAY", "ORCDRC", "PHIHOX") %in% unique(dat$variable))) {
+    if (any(soil_names %in% unique(dat$variable))) {
       accessible_palette <- setNames(Four_colorblind, c("Biodiversity proxy", "Mean meteorology", "Structural properties", "Soil properties"))
     } else {
       accessible_palette <- setNames(Three_colorblind2, c("Biodiversity proxy", "Mean meteorology", "Structural properties")) 
@@ -135,14 +156,14 @@ plot_mumin_effects <- function(test = "main") {
     ## Add predictor labels
     dat <- dat %>% 
       mutate(var_type = case_when(
-        variable %in% clim_names & !variable %in% c("CLAY", "ORCDRC", "PHIHOX") ~ "Mean meteorology",
-        variable %in% c("CLAY", "ORCDRC", "PHIHOX") ~ "Soil properties",
+        variable %in% clim_names & !variable %in% soil_names ~ "Mean meteorology",
+        variable %in% soil_names ~ "Soil properties",
         variable %in% struct_names ~ "Structural properties",
         variable == "NIRv_median" ~ "Structural properties",
         str_detect(variable, "Rao") ~ "Biodiversity proxy",
         T ~ "Other"
       )
-      )
+      ) %>% print(n = Inf)
     
     
     ## Add levels for y axis order
@@ -150,47 +171,19 @@ plot_mumin_effects <- function(test = "main") {
     var_names <- dat %>% dplyr::arrange(desc(var_type), desc(variable)) %>% pull(variable) %>% unique()
     y_names <- dat %>% arrange(prediction) %>% pull(prediction) %>% unique()
     if (response == "efp") {
-      if(length(y_names) == 5) {
-        y_labels <- c(expression("CUE"[eco]), expression("GPP"[sat]), expression("Gs"[max]), expression("NEP"[max]), expression("WUE"))#, " [(n == ", n_obs, ")]")
-      } else if (length(y_names) == 6) {
-        y_labels <- c(expression("CUE"[eco]), expression("GPP"[sat]), expression("Gs"[max]), expression("NEP"[max]), expression("WUE"), expression("uWUE"))
-      }
-    } else if (response == "iav") {
-      if (iav_in %in% c("v00", "v01", "v04", "v05")) { # CV = coefficient of variation
-        if (length(y_names) == 5) {
-          y_labels <- c(expression("CUEeco"[cv]), expression("GPPsat"[cv]), expression("Gsmax"[cv]), expression("NEPmax"[cv]), expression("WUE"[cv]))#, " [(n == ", n_obs, ")]")
-        } else if (length(y_names) == 6) {
-          y_labels <- c(expression("CUEeco"[cv]), expression("GPPsat"[cv]), expression("Gsmax"[cv]), expression("NEPmax"[cv]), expression("WUE"[cv]), expression("uWUE"[cv]))
-        }
-      } else if (iav_in %in% c("v02", "v03", "v06")) { # STD = standard deviation
-        if (length(y_names) == 5) {
-          y_labels <- c(expression("CUEeco"[std]), expression("GPPsat"[std]), expression("Gsmax"[std]), expression("NEPmax"[std]), expression("WUE"[std]))#, " [(n == ", n_obs, ")]")
-        } else if (length(y_names) == 6) {
-          y_labels <- c(expression("CUEeco"[std]), expression("GPPsat"[std]), expression("Gsmax"[std]), expression("NEPmax"[std]), expression("WUE"[std]), expression("uWUE"[std]))
-        }
-      } else if (iav_in %in% c("v07", "v08")) { # ES = ecosystem stability
-        if (length(y_names) == 5) {
-          y_labels <- c(expression("CUEeco"[es]), expression("GPPsat"[es]), expression("Gsmax"[es]), expression("NEPmax"[es]), expression("WUE"[es]))#, " [(n == ", n_obs, ")]")
-        } else if (length(y_names) == 6) {
-          y_labels <- c(expression("CUEeco"[es]), expression("GPPsat"[es]), expression("Gsmax"[es]), expression("NEPmax"[es]), expression("WUE"[es]), expression("uWUE"[es]))
-        }
-      }
+      y_labels <- efp_labels[intersect(y_names, efps_names)]
     } else if (response == "emf") {
-      if(length(y_names) == 2) {
-        y_labels <- c(expression("EMF"[average]), expression("EMF"[threshold]))#, " [(n == ", n_obs, ")]")
-      } else if (length(y_names) == 3) {
-        y_labels <- c(expression("EMF"[average]), expression("EMF"[threshold]), expression("EMF"[radar]))#, " [(n == ", n_obs, ")]")
-      }
+      y_labels <- emf_labels[intersect(y_names, emf_names)]
     }
     
-    nice_names <- var_names %>% str_replace_all("_", " ")
+    var_labels <- var_names %>% str_replace_all("_", " ")
     
     dat <- dat %>% 
       mutate(
         variable = factor(
           variable,
           levels = var_names,
-          labels = nice_names
+          labels = var_labels
         ),
         prediction = factor(
           prediction,
@@ -202,14 +195,19 @@ plot_mumin_effects <- function(test = "main") {
           levels = c("Biodiversity proxy", "Mean meteorology", "Structural properties", "Soil properties")
         ),
         rel_cat = case_when( # add relative importance categories
-          rel_importance >= 0.0 & rel_importance < 0.1 ~ 0.00,
-          rel_importance >= 0.1 & rel_importance < 0.2 ~ 0.25,
-          rel_importance >= 0.2 & rel_importance < 0.3 ~ 0.50,
-          rel_importance >= 0.3 & rel_importance < 0.4 ~ 0.75,
-          rel_importance >= 0.4 & rel_importance < 1.0 ~ 1.00
+          # rel_importance >= 0.0 & rel_importance < 0.1 ~ 0.00,
+          # rel_importance >= 0.1 & rel_importance < 0.2 ~ 0.25,
+          # rel_importance >= 0.2 & rel_importance < 0.3 ~ 0.50,
+          # rel_importance >= 0.3 & rel_importance < 0.4 ~ 0.75,
+          # rel_importance >= 0.4 & rel_importance < 1.0 ~ 1.00
+          rel_importance >= 0.00 & rel_importance < 0.15 ~ 0.00,
+          rel_importance >= 0.15 & rel_importance < 0.30 ~ 0.50,
+          rel_importance >= 0.30 & rel_importance < 1.00 ~ 1.00
         ) %>% factor(
-          levels = c(0.00, 0.25, 0.50, 0.75, 1.00),
-          labels = c("0%-10%", "10%-20%", "20%-30%", "30%-40%", "40%-100%")
+          # levels = c(0.00, 0.25, 0.50, 0.75, 1.00),
+          # labels = c("0%-10%", "10%-20%", "20%-30%", "30%-40%", "40%-100%")
+          levels = c(0.00, 0.50, 1.00),
+          labels = c("0%-15%", "15%-30%", "30%-100%")
         ),
       ) %>%
       arrange(prediction, var_type, variable) %>% 
@@ -230,14 +228,17 @@ plot_mumin_effects <- function(test = "main") {
     ## Plot model coefficients ----
     p_effects <- list() # initialize list of plots
     for (pp in 1:length(unique(dat$prediction))) {
+      print(glue("=> Plotting effects on {y_names[pp]}."))
+      
       # data (pp)
       dat_pp <- dat %>% dplyr::filter(prediction == unique(dat$prediction)[pp])
       
       # caption (pp)
-      labelcap <- bquote(R^2 ~ "=" ~ .(sprintf("%.1f", signif(unique(dat_pp$R2), 3) * 100)) ~ "%" ~
-                           "  RMSE =" ~ .(sprintf("%.1f", signif(unique(dat_pp$RMSE), 2))) ~
-                           "  n =" ~ .(unique(dat_pp$n))
-      )
+      labelcap <- bquote(
+        R^2 ~ "=" ~ .(sprintf("%.1f", signif(unique(dat_pp$R2), 3) * 100)) ~ "%" ~
+          "  RMSE =" ~ .(sprintf("%.1f", signif(unique(dat_pp$RMSE), 2))) ~
+          "  n =" ~ .(unique(dat_pp$n))
+        )
       
       p_effects[[pp]] <- dat_pp %>% 
         ggplot(aes(x = estimate, y = variable)) +
@@ -246,7 +247,7 @@ plot_mumin_effects <- function(test = "main") {
         #   aes(color = var_type, shape = rel_cat),
         #   alpha = 1, size = 12, stroke = line_width, na.rm = T, show.legend = T
         # ) +
-        geom_errorbarh( # draw errorbars without transparency
+        geom_errorbar( # draw errorbars without transparency
           aes(color = var_type, xmin = estimate - std_error, xmax = estimate + std_error),
           alpha = 1, height = 0, linewidth = line_width, na.rm = T, show.legend = T
         ) +
@@ -301,49 +302,75 @@ plot_mumin_effects <- function(test = "main") {
         theme_bw() +
         theme_combine +
         theme(
-          axis.title.y = element_blank(), # remove axes titles
+          axis.title.x = element_blank(), # remove x axis title
+          axis.title.y = element_blank(), # remove y axis title
           legend.background = element_rect(fill = "transparent"),
           plot.caption = element_text(color = text_color_background), # color of caption label
           plot.margin = unit(c(0, 10, 0, 0), "mm")
         ) +
         NULL
       
+      ## Save
+      if (savedata) {
+        # single multimodel effect plots
+        ggplot2::ggsave(
+          filename = glue("results/multimodel_inference/singleEFPs/mumin_coefficients_{y_names[pp]}_{vers_out}.jpg"), plot = p_effects[[pp]],
+          device = "jpeg", width = 16, height = 9, dpi = 150
+          )
+      }
       
+      ## Remove legend for combined patchwork
       if (pp != length(unique(dat$prediction))) {
         p_effects[[pp]] <- p_effects[[pp]] + theme(legend.position = "none")
       }
     }
     
     
+    
     ## Combine ----
+    n_rows <- ceiling(length(p_effects) / 3)
+    
+    # ## Remove x-axis labels & legends (keep only on bottom row)
+    # if (n_rows > 1) {
+    #   p_effects[1:(length(p_effects)-length(p_effects)/n_rows)] <- map(.x = p_effects[1:(length(p_effects)-length(p_effects)/n_rows)], .f = ~rm_xaxis_title(p = .x))
+    #   # remove by: index != final row
+    # }
+    
+    ## Combine
     if (response %in% c("efp", "iav")) {
-      p_effects <- wrap_plots(p_effects, nrow = 2) +
-        plot_layout(guides = 'collect') + plot_annotation(tag_levels = "a")
+      p_out <- wrap_plots(p_effects, nrow = n_rows) + guide_area() +
+        plot_layout(guides = 'collect') +
+        plot_annotation(tag_levels = "A")
     } else if (response == "emf") {
-      p_effects <- wrap_plots(p_effects, ncol = 2) +
-        plot_layout(guides = 'collect') + plot_annotation(tag_levels = "a")
+      p_out <- wrap_plots(p_effects, nrow = n_rows) +
+        plot_layout(guides = 'collect') +
+        plot_annotation(tag_levels = "A")
     }
-    p_effects
+    p_out
     
     
     
     ### Save -------------------------------------------------------------------
     if (savedata) {
-      scal <- 1
-      width <- 508
-      height <- 285.75 #width * 6.66 / 31.02
+      scal <- 2
+      width <- 16 #508
+      if (eee == response %in% c("efp", "iav")) {
+        height <- 18
+      } else if (response == "emf") {
+        height <- 6 #285.75 #/ 2 * n_rows
+      }
       
-      # multimodel effects plot
-      ggplot2::ggsave(filename = glue::glue("results/multimodel_inference/mumin_coefficients_{vers_out}.jpg"), plot = p_effects, device = "jpeg",
-                      width = width, height = height, units = "mm", dpi = 150 * scal)
+      # combined multimodel effects plot
+      ggplot2::ggsave(filename = glue("results/multimodel_inference/mumin_coefficients_{vers_out}.jpg"), plot = p_out, device = "jpeg",
+                      width = width, height = height, dpi = 150 * scal)
       
       # # transparent png
-      # ggplot2::ggsave(filename = glue::glue("results/multimodel_inference/mumin_coefficients_{vers_out}.png"), plot = p_effects, device = "png",
+      # ggplot2::ggsave(filename = glue("results/multimodel_inference/mumin_coefficients_{vers_out}.png"), plot = p_out, device = "png",
       #                 bg = "transparent", width = width, height = height, units = "mm", dpi = 300 * scal)
       
       # if (subx == "main") {
       #   # cross validation effects plot
-      #   ggplot2::ggsave(filename = glue::glue("results/multimodel_inference/crossval_coefficients_{vers_out}.jpg"), plot = p_crossval, device = "jpeg",
+      #   ggplot2::ggsave(filename = glue("results/multimodel_inference/crossval_coefficients_{vers_out}.jpg"), plot = p_crossval, device = "jpeg",
       #                   width = width, height = height, units = "mm", dpi = 300 * scal)
       # }
     }
@@ -354,7 +381,8 @@ plot_mumin_effects <- function(test = "main") {
   
   
   
-  ### End ---------------------------------------------------------------------- 
+  ### End ----------------------------------------------------------------------
+  print("End of script.")
 }
 
 

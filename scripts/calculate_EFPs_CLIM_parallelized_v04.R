@@ -1,7 +1,7 @@
 #### IMPORT AND PROCESS FLUXES
 # Ecosystem Functional Properties, climate properties...
 
-### Authors: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de), Mirco Migliavacca, Talie Musavi
+### Authors: Ulisse Gomarasca (ugomar@bgc-jena.mpg.de)
 ### Version History ------------------------------------------------------------
 # v01, 30.01.2024:  Working parallelized EFP calculation (CUEeco, GPPsat, NEPmax,
 #                   Gsmax, WUE) for full sites and by years.
@@ -13,16 +13,13 @@
 #                   5-days-moving-window for GPPsat will be interrupted at the
 #                   end of year.
 # v03, 28.03.2024:  Added climate aggregation. Filtered out IGBP = CVM.
+# v04, 23.01.2026:  Added EFPs calculations for Rb, EF, and LUE.
 
 
 
 ### Script settings ------------------------------------------------------------
 # Clear environment
 rm(list = ls(all = TRUE))
-
-# Start
-library(tictoc)
-tic("") # Script run time.
 
 # Computation grouping strategy
 group_year <- F #readline(prompt = "Calculate EFPs for site-years (T) or whole sites (F)? T/F:") # ask if sites or site-years
@@ -35,9 +32,8 @@ if (group_year %in% c("y", "yes", "Y", "YES", "T", "TRUE")) {
 }; rm(group_year) # clean environment
 
 # Data settings
-savedata <- as.logical(readline(prompt = "Save the output of the script? T/F:")) # ask if output should be saved
-vers_out <- "v03" # output version
-
+savedata <- as.logical(readline(prompt = "Save the output of the script? T/F: ")) # ask if output should be saved
+vers_out <- "v04" # output version
 eval_file <- glue::glue("results/analysis_evaluation/evaluation_calculate_EFPs_CLIM{groupin}_{vers_out}.txt")
 if (savedata) {
   cat(paste0(vers_out, "\n"), file = "data/efp_version.txt") # save version number for reference in other scripts ("\n" for new line to avoid warning when reading back into R with read.table())
@@ -45,62 +41,77 @@ if (savedata) {
 }
 
 
+## Plotting
+plotting_vars <- F # plot raw eddy covariance timeseries
+plotting_efps <- F # plot timeseries of instantaneous variables underlying EFPs
+plotting_clim <- F # plot climatic variables timeseries
+
+
 
 ### Utilities ------------------------------------------------------------------
-## Packages
-library(bigleaf)    # eddy covariance processing
-library(dplyr)      # tidy data manipulation
-options(dplyr.summarise.inform = F) # suppress summary info
-library(furrr)      # map in parallel
-library(future)     # plan parallelization
-library(ggplot2)    # tidy plots
-library(glue)       # glue strings
-library(janitor)    # clean data
-library(lubridate)  # dates
-library(ncdf4)      # netcdf files
-library(purrr)      # map functions
-library(quantreg)   # quantile regression
-library(readr)      # read csv files
-library(REddyProc)  # eddy covariance functions
-library(rlang)      # quoting inside functions
-library(stringr)    # tidy string manipulation
-library(tictoc)     # measure time
-library(tidyr)      # clean and reshape tidy data
-
 ## Functions
-source("scripts/functions/calc_CUEeco.R")
-source("scripts/functions/calc_GPPsat_NEPmax.R")
-source("scripts/functions/calc_Gsmax.R")
-source("scripts/functions/calc_WUE.R")
+source("scripts/functions/safe_load_packages.R")
 source("scripts/functions/import_data_and_calc_CLIM.R")
 source("scripts/functions/import_data_and_calc_EFPs.R")
+source("scripts/functions/plot_timeseries.R")
+
+## Packages
+# dyn.load('/opt/ohpc/pub/libs/hwloc/lib/libhwloc.so.15')
+# dyn.load('/opt/ohpc/pub/libs/gnu9/openmpi4/hdf5/1.10.8/lib/libhdf5_hl.so.100')
+
+required_packages <- c(
+  "bigleaf",      # eddy covariance processing
+  "dplyr",        # tidy data manipulation
+  "furrr",        # map in parallel
+  "future",       # plan parallelization
+  "ggplot2",      # tidy plots
+  "glue",         # glue strings
+  "janitor",      # clean data
+  "lubridate",    # dates manipulation
+  "ncdf4",        # netcdf files
+  "purrr",        # map functions
+  "quantreg",     # quantile regression
+  "readr",        # read csv files
+  "REddyProc",    # eddy covariance functions
+  "rlang",        # quoting inside functions
+  "stringr",      # tidy string manipulation
+  "tictoc",       # measure time
+  "tidyr"         # clean and reshape tidy data
+)
+safe_load_packages(required_packages)
+
+
+
+### Start computations ---------------------------------------------------------
+tic("") # Script run time.
 
 
 
 ### Data files -----------------------------------------------------------------
-## Eddy-covariance data
-data_path <- "//minerva/BGI/work_4/scratch/jnelson/4Sinikka/data20240123/"
-data_path2 <- "//minerva/BGI/work_1/scratch/fluxcom/sitecube_proc/model_files/"
+data_path_fluxes <- "//minerva/BGI/work_4/scratch/jnelson/4Sinikka/data20240123/"
+data_path_meteo <- "//minerva/BGI/work_4/scratch/fluxcom/sitecube_proc/model_files_20231129/"
 
 ## Sites
-sites <- str_extract(list.files(data_path), pattern = "[:upper:]{2}-[:alnum:]{3}") %>% unique()
-sites2 <- str_extract(list.files(data_path2), pattern = "[:upper:]{2}-[:alnum:]{3}") %>% unique()
+sites <- str_extract(list.files(data_path_fluxes), pattern = "[:upper:]{2}-[:alnum:]{3}") %>% unique()
+sites2 <- str_extract(list.files(data_path_meteo), pattern = "[:upper:]{2}-[:alnum:]{3}") %>% unique()
 
 
 ## Combine site list
+# TO DO: check what is missing, and possibly integrate from other sources
 sites <- intersect(sites, sites2); rm(sites2)
 
 
 
 ### Filtering thresholds -------------------------------------------------------
-QCfilt <- c(0, 1) # quality filter
-GSfilt <- 0.3     # growing season
-Pfilt  <- 0.1     # precipitation filter
-Pfilt_time <- 48  # period to exclude after precipitation events (hours)
-SWfilt <- 50      # radiation filter (daytime) --> fixed to 100 for every EFP for streamlining (but still conservative)
-USfilt <- 0.2     # u* filter
-GPPsatfilt <- 60  # filter for GPPsat outliers
-# Rfilt  <- 30      # filter for RECO_NT outliers
+QCfilt <- c(0, 1)  # quality filter
+GSfilt <- 0.3      # growing season
+Pfilt  <- 0.1      # precipitation filter
+Pfilt_time <- 48   # period to exclude after precipitation events (hours)
+SWfilt <- 50       # radiation filter (daytime) --> fixed to 100 for every EFP for streamlining (but still conservative)
+USfilt <- 0.2      # u* filter
+GPPsatfilt <- 60   # filter for GPPsat outliers
+Rfilt  <- 30       # filter for RECO_NT outliers
+EFfilt <- c(-4, 5) # filter for outliers in EF timeseries
 
 min_years <- 5    # minimum number of years EFP calculations
 min_months <- 3   # minimum number of months in a site-year (used to calculated min. half-hourly entries)
@@ -119,43 +130,53 @@ n0 <- length(sites) # number of sites BEFORE filter
 ### Sites of Interest ----------------------------------------------------------
 # Sites of interest (mostly for testing without the full site list)
 # load(file = glue("data/sites_trend_efp_{vers_out}.RData")) # sites_trend_efp from trend analysis in calculate_eco_stability.R script
-rangesites <- 1:length(sites)
+rangesites <- 1:length(sites) #which(sites == "BE-Lcr") #
 site_list <- split(sites[rangesites], seq(length(sites[rangesites]))); # site_list <- as.list(sites[rangesites]) # simpler, check later if it works
 # site_list <- as.list(sites[sites %in% sites_trend_efp])
 
 # Random indexes for plotting
-set.seed(34743821)
+set.seed(34743822)
 random_n <- as.integer(runif(10, min = 1, max = n0)) %>% sort()
 rand_sites <- sites[random_n] # random sites for time-series plots
-# rand_sites <- sites_trend_efp
+
+# rangesites <- 1:length(rand_sites)
+# site_list <- split(sites[random_n], seq(length(sites[random_n])))
+# print("TEMPORARY random sites to do some plots!!!")
 
 
 #### Parallelization -----------------------------------------------------------
 # ## Test function ----
-# efps_out <- import_data_and_calc_EFPs(site_list = site_list[1], path = data_path, path2 = data_path2, plotting = F)
-# # works as of 30.01.2024 17:56 for all EFPs by full sites or single site-years
-# clim_out <- import_data_and_calc_CLIM(site_list = site_list[1], path = data_path, path2 = data_path2, plotting = F)
-# # works as of 06.02.2024 16:56 for all climatic variables by full sites or single site-years
+# efps_test <- import_data_and_calc_EFPs(
+#   site_list = site_list[2], path_fluxes = data_path_fluxes, path_meteo = data_path_meteo,
+#   plotting_vars = plotting_vars, plotting_efps = plotting_efps
+#   )
+# # works as of 26.05.2026 for AT-Neu (local)
 # 
-#
+# clim_test <- import_data_and_calc_CLIM(site_list = site_list[2], path_fluxes = data_path_fluxes, path_meteo = data_path_meteo, plotting = F)
+# # works as of 25.03.2026 for AT-Neu
+# 
+# 
 # ## Test sequential computation time ----
-# efps_out <- tibble()
+# efps_test <- tibble()
 # tic("Time to import, process data, and calculate EFPs for all sites (sequential)")
-# for (ii in 1:length(site_list)) {
-#   temp_out <- import_data_and_calc_EFPs(site_list = site_list[ii], path = data_path, path2 = data_path2, plotting = F)
-#   efps_out <- bind_rows(efps_out, temp_out)
+# for (ii in 2:length(site_list)) {
+#   temp_out <- import_data_and_calc_EFPs(
+#     site_list = site_list[ii], path_fluxes = data_path_fluxes, path_meteo = data_path_meteo,
+#     plotting_vars = plotting_vars, plotting_efps = plotting_efps
+#     )
+#   efps_test <- bind_rows(efps_test, temp_out)
 # }
 # toc()
-# # With 2 cpus, saved ~ 20-25% of the time for full sites and 35% for site-years;
+# # Works as of 26.05.2026 for all sites (1h 25 min)
 # 
 # 
 ## Define computing strategy ----
-if (getwd() == "C:/Users/ugomar/Desktop/multifunctionality") {
-  plan(multisession, workers = 2) # works as of 26.01.2024 17:05
-} else if (getwd() == "/Net/Groups/BGI/people/ugomar/R/B_EF") {
-  ncpus <- as.integer(readline(prompt = "How many CPUs should be used for parallel computing? (Careful not to crash your computer!)"))
-  plan(cluster, workers = ncpus)
-}
+# if (getwd() == "C:/Users/ugomar/Desktop/multifunctionality") {
+#   plan(multisession, workers = 2) # works as of 26.01.2024 17:05
+# } else if (getwd() == "/Net/Groups/BGI/people/ugomar/codes/multifunctionality") {
+ncpus <- as.integer(readline(prompt = "How many CPUs should be used for parallel computing? (Careful, check core availability!): "))
+plan(multisession, workers = ncpus)
+# }
 
 
 ### Run functions (parallel computing) -----------------------------------------
@@ -165,13 +186,16 @@ print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
 
 tic("")
 efps_out <- future_map_dfr( # output as row-bound dataframe
-  .x = site_list, .f = import_data_and_calc_EFPs, path = data_path, path2 = data_path2, plotting = T,
+  .x = site_list, .f = import_data_and_calc_EFPs, path_fluxes = data_path_fluxes, path_meteo = data_path_meteo,
+  plotting_vars = plotting_vars, plotting_efps = plotting_efps,
   .options = furrr_options(
     seed = 1234, scheduling = Inf, chunk_size = NULL), # scheduling set to Inf creates n_x chunks (1 chunk per element of .x).
   .progress = T
 )
 toc(log = T); log_efps <- tic.log(format = T)[[1]]; tic.clearlog()
-# works as of 30.01.2024 17:59 for all EFPs, for full sites and by years
+# 1 h 12 min with 1 core
+# 0 h 10 min with 12 cores
+# WARNING: ALL NON-C EFPS FAIL WHEN RUN IN PARALLEL!? (also for pseudo-parallel with 1 core)
 
 
 ## Aggregate CLIMATE and site characteristics (e.g. soil) ----
@@ -180,7 +204,8 @@ print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
 
 tic("")
 clim_out <- future_map_dfr( # output as row-bound dataframe
-  .x = site_list, .f = import_data_and_calc_CLIM, path = data_path, path2 = data_path2, plotting = T,
+  .x = site_list, .f = import_data_and_calc_CLIM, path_fluxes = data_path_fluxes, path_meteo = data_path_meteo,
+  plotting = plotting_clim,
   .options = furrr_options(
     seed = 1234, scheduling = Inf, chunk_size = NULL), # scheduling set to Inf creates n_x chunks (1 chunk per element of .x).
   .progress = T
@@ -243,8 +268,8 @@ if (savedata) {
   efps_names <- names(efps_out %>% dplyr::select(-SITE_ID, -contains("pval"), -contains("YEAR"))) # efps_names <- c("CUEeco", "GPPsat", "Gsmax", "NEPmax", "uWUE", "WUE")
   clim_names <- names(clim_out %>% dplyr::select(-SITE_ID, -contains("YEAR"))) %>% sort()
   # Save
-  save(efps_names, file = glue::glue("data/inter/efps_names_{as.character(read.table('data/global_version.txt'))}.RData"))
-  save(clim_names, file = glue::glue("data/inter/clim_names_{as.character(read.table('data/global_version.txt'))}.RData"))
+  save(efps_names, file = glue::glue("data/inter/efps_names_{vers_out}.RData"))
+  save(clim_names, file = glue::glue("data/inter/clim_names_{vers_out}.RData"))
 }
 
 
@@ -324,4 +349,4 @@ if (savedata) {
 ### End ------------------------------------------------------------------------
 toc(log = T)
 txt <- glue::glue("Script total run time: {tic.log(format = T)[[1]]}."); tic.clearlog()
-if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}
+print(txt); if (savedata) {cat(paste0(txt, "\n"), file = eval_file, append = T)}

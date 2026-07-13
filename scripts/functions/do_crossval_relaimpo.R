@@ -46,6 +46,8 @@ do_crossval_relaimpo <- function(
     ## Save input data ----
     if (savedata) {
       efp_vers_out <- paste0(vers_out, "_", as.character(EFP_x))
+      # Data
+      write_csv(df, glue::glue("data/output/data_mumin_input_cross_validation_{efp_vers_out}.csv"))
       # Site list
       dat_sites <- df %>% dplyr::select(SITE_ID)
       write_csv(dat_sites, glue::glue("data/output/site_list_cross_validation_{efp_vers_out}.csv"))
@@ -90,24 +92,26 @@ do_crossval_relaimpo <- function(
       )
     } else if (length(predictors_efpx) == 1) {
       # Compile output tibble
-      relimp_all <- bind_rows(relimp_all,
-                              bind_cols(
-                                prediction = as.character(EFP_x),
-                                variable = rownames(summar$coefficients)[2],
-                                R2 = summar$r.squared,
-                                R2_adjusted = summar$adj.r.squared,
-                                AICc = AICc(fm0), # k = 2, should be equal to default AIC, but it's not
-                                rel_importance = 1,
-                                n = nrow(df),
-                                RMSE = rmse_efpx, # leave-one-out root mean square error for cross validation
-                              ) %>%
-                                left_join(summar$coefficients %>%
-                                            as_tibble(rownames = "variable") %>%
-                                            dplyr::filter(variable != "(Intercept)") %>%
-                                            dplyr::rename(p_val = `Pr(>|t|)`) %>%
-                                            janitor::clean_names(),
-                                          by = "variable")
-      )
+      relimp_all <- bind_rows(
+        relimp_all,
+        bind_cols(
+          prediction = as.character(EFP_x),
+          variable = rownames(summar$coefficients)[2],
+          R2 = summar$r.squared,
+          R2_adjusted = summar$adj.r.squared,
+          AICc = AICc(fm0), # k = 2, should be equal to default AIC, but it's not
+          rel_importance = 1,
+          n = nrow(df),
+          RMSE = rmse_efpx, # leave-one-out root mean square error for cross validation
+          ) %>%
+          left_join(summar$coefficients %>%
+                      as_tibble(rownames = "variable") %>%
+                      dplyr::filter(variable != "(Intercept)") %>%
+                      dplyr::rename(p_val = `Pr(>|t|)`) %>%
+                      janitor::clean_names(),
+                    by = "variable")
+        ) %>% 
+        relocate(c(R2, AICc, RMSE, n), .after = last_col())
     } else {
       warning("Relative importance could not be performed because input object had 0 predictors.")
     } # end if 'number of predictors > 1'

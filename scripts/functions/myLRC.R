@@ -14,12 +14,23 @@ myLRC <- function(data) {
     result = tryCatch({
       fitLRC <- bigleaf::light.response(as.data.frame(data), NEE = "NEE", Reco = "RECO", PPFD = "PPFD",
                                PPFD_ref = 2000) # variable names changed to this format in temporary input dataframe
-      # out <- tidy(fitLRC)$estimate[2] # extract GPPsat estimate [as in original code]
-      out <- summary(fitLRC)[["coefficients"]][2] # extract GPPsat estimate
+      
+      ## extract coefficients
+      out <- tibble(
+        LUE    = summary(fitLRC)[["coefficients"]][1], # alpha = ecosystem quantum yield (umol CO2 m-2 s-1) = slope of the light response curve, and is a measure for the light use efficiency of the canopy
+        GPPsat = summary(fitLRC)[["coefficients"]][2] # GPPsat estimate, i.e., GPP_ref = GPP at the reference PPFD (usually at saturating light)
+        )
       return(out)
     }, error = function(err) {
       warning("Error in the light response curve function. Returning NA.")
-      return(NA_real_)
+      out <- tibble(
+        LUE    = NA_real_,
+        GPPsat = NA_real_
+      )
+      return(out)
     })
   }
 }
+
+# ### Debug -----------------------
+# debugonce(myLRC)
