@@ -10,4 +10,4 @@ To navigate codes, open 'code_overview.Rmd' in RStudio.
 All steps necessary for the analyses are listed and described there.
 
 ## Data
-Prior to publication, data available at: https://figshare.com/s/6bc654d4499adfb55d99
+Input data necessary to run the analyses are included as a zipped folder. The zipped folder will be automatically unzipped when running code_overview.Rmd.
