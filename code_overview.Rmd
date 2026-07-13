@@ -8,6 +8,9 @@ Codes to run the analyses for the manuscript Gomarasca et al., in review, titled
 
 ### Pre-processing -------------------------------------------------------------
 ```{r, echo = F}
+## Unzip input data ----
+
+
 ## Extract Sentinel 2 data in GEE ----
 # From Google Earth Engine at:
 # https://code.earthengine.google.com/b0d68ff3faa1b0e04d9b7f5f4e6133ba
