@@ -14,7 +14,7 @@ calc_Rb <- function(
     data, timezone, site, year,
     SWfilt = NA, GPPfilt = 60, Rfilt = 30, QCfilt = 1,
     plotting = F
-    ) {
+) {
   
   ## Utilities ----
   source("scripts/functions/plot_timeseries.R")
@@ -33,7 +33,7 @@ calc_Rb <- function(
   # }
   
   ## Output by error ----
-  err_output <- dplyr::tibble(Rb = NA_real_, Rbmax = NA_real_, E0 = NA_real_)
+  err_output <- dplyr::tibble(Rb = NA_real_, Rbmax = NA_real_)#, E0 = NA_real_)
   
   
   ## Quote & settings ----
@@ -72,7 +72,7 @@ calc_Rb <- function(
   ## Subset for calculations and omit NAs ----
   data_subset <- data %>% 
     dplyr::select(DATETIME, GPP, NEE, NEE_QC, SW_IN, SW_IN_QC, TA, TA_QC) #%>% 
-    # tidyr::drop_na()
+  # tidyr::drop_na()
   
   
   ## Pre-processing ----
@@ -80,13 +80,13 @@ calc_Rb <- function(
     mutate(
       DATETIME = as.POSIXct(DATETIME) + 30 * 30 # make sure class is POSIX datetime and center on half-hour
       # timezone = calc_timezone_shift(LATITUDE, LONGITUDE)
-      ) %>% 
+    ) %>% 
     rename(DateTime = DATETIME)
   
   EddyProc.C <- sEddyProc$new(
     site, data_subset, c('NEE', 'NEE_QC', 'SW_IN', 'SW_IN_QC', 'TA', 'TA_QC'),
     LatDeg = as.numeric(lat), LongDeg = as.numeric(lon), TimeZoneHour = 0
-    )
+  )
   
   
   ## Run the MR Partitioning ----
@@ -96,7 +96,12 @@ calc_Rb <- function(
     QFFluxValue = 0, TempVar = "TA", QFTempVar = "TA_QC",
     QFTempValue = 0, RadVar = "SW_IN", TRef = 273.15 + 15,
     suffix = ""
-    )
+  )
+  
+  if (unique(EddyProc.C$sTEMP$E_0) == -111) {
+    txt <- glue::glue("!=> Regression of E0 failed due to insufficient relationship in the data for site {site}. Setting current EFPs to NA."); warning(txt); txt_vector <- c(txt_vector, txt)
+    return(err_output)
+  }
   
   
   ## Filters ----
@@ -105,7 +110,7 @@ calc_Rb <- function(
     EddyProc.C$sTEMP$R_ref > Rfilt | # unreasonable respiration estimates
       data_subset$GPP > GPPfilt | # unreasonable GPP estimates
       data_subset$NEE_QC > max(QCfilt, na.rm = T) # low quality data
-    ] <- NA_real_
+  ] <- NA_real_
   
   
   

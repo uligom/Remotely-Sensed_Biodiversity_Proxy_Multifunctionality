@@ -2,7 +2,7 @@
 import_data_and_calc_EFPs <- function(
     site_list = list("AR-SLu", "AT-Neu", "AU-Cpr"),
     path_fluxes = "//minerva/BGI/scratch/jnelson/4Sinikka/data20240123/", path_meteo = "//minerva/BGI/work_1/scratch/fluxcom/sitecube_proc/model_files/",
-    future_env = list(savedata, eval_file, grouping_var, rand_sites, QCfilt, GSfilt, Pfilt, Pfilt_time, SWfilt, USfilt, GPPsatfilt, Rfilt, EFfilt, min_years = 5, min_months = 3),
+    future_env = list(savedata, eval_file, grouping_var, rand_sites, QCfilt, GSfilt, Pfilt, Pfilt_time, SWfilt, USfilt, GPPsatfilt, Rfilt, EFfilt, min_years = min_years, min_months = min_months),
     plotting_vars = F, plotting_efps = F
 ) {
   ### Utilities ----------------------------------------------------------------
